@@ -2,58 +2,43 @@ use heck::ToSnakeCase;
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 use syn::parse::Parser;
+use syn::Variant;
 use syn::{
-    parse_macro_input, punctuated::Punctuated, token::Comma, Attribute, DataEnum, Field, Fields,
+    parse_macro_input, punctuated::Punctuated, token::Comma, Attribute, Expr, Field, Fields,
     FieldsNamed, Ident,
 };
 
-/// Attribute macro that adds a `location: &'static ::std::panic::Location<'static>`
+/// Attribute macro that adds a `location: Option<::n0_error::Location>`
 /// field to all named-field variants of an enum. Does nothing else.
 #[proc_macro_attribute]
 pub fn add_location(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut input = parse_macro_input!(item as syn::Item);
-    let out = match &mut input {
+    match &mut input {
         syn::Item::Enum(item_enum) => {
             for variant in item_enum.variants.iter_mut() {
                 match &mut variant.fields {
                     Fields::Named(fields) => {
-                        let has_location = fields
+                        let field = quote! { location: Option<::n0_error::Location> };
+                        fields
                             .named
-                            .iter()
-                            .any(|f| f.ident.as_ref().map(|i| i == "location").unwrap_or(false));
-                        if !has_location {
-                            // Inject `location` at the end.
-                            fields.named.push(
-                                syn::Field::parse_named
-                                    .parse2(quote! {
-                                        location: &'static ::std::panic::Location<'static>
-                                    })
-                                    .expect("failed to parse injected location field"),
-                            );
-                        }
+                            .push(syn::Field::parse_named.parse2(field).unwrap());
                     }
                     _ => {
-                        return syn::Error::new_spanned(
-                            &variant.ident,
-                            "#[add_location] requires named-field variants",
-                        )
-                        .to_compile_error()
-                        .into();
+                        return err(&variant, "#[add_location] requires named-field variants")
+                            .into();
                     }
                 }
             }
             quote! { #item_enum }
         }
         _ => {
-            return syn::Error::new_spanned(&input, "#[add_location] only supports enums")
-                .to_compile_error()
-                .into();
+            return err(&input, "#[add_location] only supports enums").into();
         }
-    };
-    out.into()
+    }
+    .into()
 }
 
-fn err(ident: &Ident, err: impl ToString) -> proc_macro2::TokenStream {
+fn err(ident: impl ToTokens, err: impl ToString) -> proc_macro2::TokenStream {
     return syn::Error::new_spanned(ident, err.to_string())
         .to_compile_error()
         .to_token_stream();
@@ -70,62 +55,72 @@ pub fn derive_error(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as syn::DeriveInput);
     let enum_ident = &input.ident;
     let generics = &input.generics;
-    let data_enum = match &input.data {
-        syn::Data::Enum(e) => DataEnum {
-            enum_token: e.enum_token,
-            brace_token: e.brace_token,
-            variants: e.variants.clone(),
-        },
-        _ => {
-            return syn::Error::new_spanned(&input, "#[derive(Error)] only supports enums")
-                .to_compile_error()
-                .into();
-        }
+    let r#enum = match &input.data {
+        syn::Data::Enum(e) => e,
+        _ => return err(&input, "#[derive(Error)] only supports enums").into(),
     };
-    let out = generate_impls(enum_ident, &data_enum, generics);
-    out.into()
+    let variants_info: Result<Vec<_>, _> = r#enum
+        .variants
+        .iter()
+        .map(|v| VariantInfo::parse(v))
+        .collect();
+    let variants_info = match variants_info {
+        Ok(x) => x,
+        Err(err) => return err.into(),
+    };
+    generate_impls(enum_ident, generics, variants_info).into()
 }
 
-fn generate_impls(
-    enum_ident: &Ident,
-    data: &DataEnum,
-    generics: &syn::Generics,
-) -> proc_macro2::TokenStream {
-    enum SourceKind {
-        None,
-        Stack,
-        Std,
+enum SourceKind {
+    None,
+    Stack,
+    Std,
+}
+
+// For each variant, capture doc comment text or #[display] attr
+struct VariantInfo<'a> {
+    ident: Ident,
+    fields: &'a FieldsNamed,
+    display: Option<proc_macro2::TokenStream>,
+    source: SourceKind,
+    transparent: bool,
+    from: Option<&'a Field>,
+}
+
+impl<'a> VariantInfo<'a> {
+    fn fields(&self) -> &Punctuated<Field, Comma> {
+        &self.fields.named
     }
 
-    // For each variant, capture doc comment text or #[display] attr
-    struct VariantInfo<'a> {
-        ident: Ident,
-        fields: &'a FieldsNamed,
-        display: Option<proc_macro2::TokenStream>,
-        source: SourceKind,
-        transparent: bool,
-        from: Option<&'a Field>,
+    fn field_idents(&self) -> impl Iterator<Item = &Ident> {
+        self.fields().iter().map(|f| f.ident.as_ref().unwrap())
     }
 
-    impl<'a> VariantInfo<'a> {
-        fn fields(&self) -> &Punctuated<Field, Comma> {
-            &self.fields.named
-        }
-
-        fn field_idents(&self) -> impl Iterator<Item = &Ident> {
-            self.fields().iter().map(|f| f.ident.as_ref().unwrap())
-        }
+    fn location(&self) -> Option<&Field> {
+        self.fields()
+            .iter()
+            .find(|f| f.ident.as_ref().unwrap() == "location")
     }
 
-    let mut variants_info = vec![];
-    for v in data.variants.iter() {
+    fn fields_without_location(&self) -> impl Iterator<Item = &Field> {
+        self.fields()
+            .iter()
+            .filter(|f| f.ident.as_ref().unwrap() != "location")
+    }
+
+    fn field_idents_without_location(&self) -> impl Iterator<Item = &Ident> {
+        self.fields_without_location()
+            .map(|f| f.ident.as_ref().unwrap())
+    }
+
+    fn parse(v: &'a Variant) -> Result<VariantInfo<'a>, proc_macro2::TokenStream> {
         let fields =
             match v.fields {
                 Fields::Named(ref fields) => fields,
-                _ => return err(
+                _ => return Err(err(
                     &v.ident,
                     "#[derive(Error)] is only supported on enums with only named-field variants",
-                ),
+                )),
             };
 
         // get source field (by name `source` if present)
@@ -133,31 +128,23 @@ fn generate_impls(
             .named
             .iter()
             .find(|f| f.ident.as_ref().unwrap() == "source");
-        let has_source = source_field.is_some();
 
         // parse transparent attribute
-        let mut transparent = false;
-        for attr in &v.attrs {
-            if attr.path().is_ident("transparent") {
-                transparent = true;
-                if !has_source || fields.named.len() > 1 {
-                    return err(
-                        &v.ident,
-                        "Variants with a #[transparent] attribute need a single `source` field",
-                    );
-                }
-            }
+        let transparent = v.attrs.iter().any(|a| a.path().is_ident("transparent"));
+        if transparent && source_field.is_none() {
+            return Err(err(
+                &v.ident,
+                "Variants with a #[transparent] attribute need a single `source` field",
+            ));
         }
 
-        let source_kind = {
-            match source_field.as_ref() {
-                None => SourceKind::None,
-                Some(field) => {
-                    if field.attrs.iter().any(|attr| attr.path().is_ident("std")) {
-                        SourceKind::Std
-                    } else {
-                        SourceKind::Stack
-                    }
+        let source_kind = match source_field.as_ref() {
+            None => SourceKind::None,
+            Some(field) => {
+                if field.attrs.iter().any(|attr| attr.path().is_ident("std")) {
+                    SourceKind::Std
+                } else {
+                    SourceKind::Stack
                 }
             }
         };
@@ -167,16 +154,16 @@ fn generate_impls(
         for field in fields.named.iter() {
             if field.attrs.iter().any(|attr| attr.path().is_ident("from")) {
                 if from.is_some() {
-                    return err(
+                    return Err(err(
                         &field.ident.clone().expect("named field"),
                         "Only one field per variant may have #[from]",
-                    );
+                    ));
                 }
                 from = Some(field);
             }
         }
 
-        variants_info.push(VariantInfo {
+        Ok(VariantInfo {
             ident: v.ident.clone(),
             fields,
             display: get_doc_or_display(&v.attrs),
@@ -185,33 +172,31 @@ fn generate_impls(
             from,
         })
     }
+}
 
+fn generate_impls(
+    enum_ident: &Ident,
+    generics: &syn::Generics,
+    variants_info: Vec<VariantInfo>,
+) -> proc_macro2::TokenStream {
     // Constructors like `fn read(source: ...) -> Self`
     let constructors = variants_info.iter().map(|vi| {
         let v_ident = &vi.ident;
         let fn_ident = Ident::new(&v_ident.to_string().to_snake_case(), v_ident.span());
-        let params = vi
-            .fields
-            .named
-            .iter()
-            .filter(|f| f.ident.as_ref().map(|i| i != "location").unwrap_or(true))
-            .map(|f| {
-                let ident = f.ident.as_ref().unwrap();
-                let ty = &f.ty;
-                quote! { #ident: #ty }
-            });
-        let names = vi.field_idents().filter(|i| i != &"location");
-        let comma = (!vi.fields().is_empty()
-            && vi
-                .fields
-                .named
-                .iter()
-                .any(|f| f.ident.as_ref().map(|i| i != "location").unwrap_or(true)))
-        .then(|| quote!(,));
+        let params = vi.fields_without_location().map(|f| {
+            let ident = f.ident.as_ref().unwrap();
+            let ty = &f.ty;
+            quote! { #ident: #ty }
+        });
+        let names = vi.field_idents_without_location();
+        let location = vi
+            .location()
+            .map(|_| quote!(location: ::n0_error::location()));
+        let comma = (location.is_some() && vi.fields().len() > 1).then(|| quote!(,));
         quote! {
             #[track_caller]
             pub fn #fn_ident(#(#params),*) -> Self {
-                Self::#v_ident { #(#names),* #comma location: ::std::panic::Location::caller() }
+                Self::#v_ident { #(#names),* #comma #location }
             }
         }
     });
@@ -219,12 +204,13 @@ fn generate_impls(
     // StackError impl pieces
     let match_location_arms = variants_info.iter().map(|vi| {
         let v_ident = &vi.ident;
-        let inner = if vi.fields.named.is_empty() {
-            quote!(location)
+        if vi.location().is_some() {
+            let suffix = (vi.fields().len() > 1).then(|| quote!(, ..));
+            quote! { Self::#v_ident { location #suffix } => *location }
         } else {
-            quote!(location, ..)
-        };
-        quote! { Self::#v_ident { #inner } => location }
+            let inner = (!vi.fields().is_empty()).then(|| quote!(..));
+            quote! { Self::#v_ident { #inner } => None }
+        }
     });
 
     let match_source_arms = variants_info.iter().map(|vi| {
@@ -255,7 +241,7 @@ fn generate_impls(
         }
     });
 
-    let match_display_plain_arms = variants_info.iter().map(|vi| {
+    let match_fmt_message_arms = variants_info.iter().map(|vi| {
         let v_ident = &vi.ident;
         if vi.transparent {
             quote! { Self::#v_ident { source, .. } => { write!(f, "{source}") } }
@@ -278,17 +264,37 @@ fn generate_impls(
         }
     });
 
+    let match_debug_arms = variants_info.iter().map(|vi| {
+        let v_ident = &vi.ident;
+        let field_idents = vi.field_idents();
+        let print = field_idents.map(|ident| {
+            let ident_s = ident.to_string();
+            quote! { .field(#ident_s, #ident) }
+        });
+        let names = vi.field_idents();
+        let v_name = v_ident.to_string();
+        quote! {
+            Self::#v_ident { #(#names),* } => {
+                f.debug_struct(#v_name)#(#print)*.finish()?;
+            }
+        }
+    });
+
     // From impls for variants marked with #[from]
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let from_impls = variants_info.iter().filter_map(|vi| vi.from.map(|field| (vi, field))).map(|(vi, field)| {
         let v_ident = &vi.ident;
         let src_ty = &field.ty;
         let src_field = &field.ident;
+        let location = vi
+            .location()
+            .map(|_| quote!(location: ::n0_error::location()));
+        let comma = (location.is_some() && vi.fields().len() > 1).then(|| quote!(,));
         quote! {
             impl #impl_generics ::core::convert::From<#src_ty> for #enum_ident #ty_generics #where_clause {
                 #[track_caller]
                 fn from(source: #src_ty) -> Self {
-                    Self::#v_ident { #src_field: source, location: ::std::panic::Location::caller() }
+                    Self::#v_ident { #src_field: source #comma #location }
                 }
             }
         }
@@ -300,7 +306,7 @@ fn generate_impls(
         }
 
         impl ::n0_error::StackError for #enum_ident #generics {
-            fn location(&self) -> &'static ::std::panic::Location<'static> {
+            fn location(&self) -> Option<::n0_error::Location> {
                 match self {
                     #( #match_location_arms, )*
                 }
@@ -310,12 +316,6 @@ fn generate_impls(
                     #( #match_source_arms )*
                 }
             }
-            fn display_plain(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                match self {
-                    #( #match_display_plain_arms, )*
-                }
-            }
-
             fn is_transparent(&self) -> bool {
                 match self {
                     #( #match_transparent_arms, )*
@@ -325,8 +325,10 @@ fn generate_impls(
 
         impl ::std::fmt::Display for #enum_ident #generics {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                use ::n0_error::{ErrorSource, SourceFormat, StackError};
-                self.display_plain(f)?;
+                use ::n0_error::{SourceFormat, StackError};
+                match self {
+                    #( #match_fmt_message_arms, )*
+                }?;
                 if f.alternate() {
                     self.fmt_sources(f, SourceFormat::OneLine)?;
                 }
@@ -336,13 +338,18 @@ fn generate_impls(
 
         impl ::std::fmt::Debug for #enum_ident #generics {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                use ::n0_error::{ErrorSource, SourceFormat, StackError, DisplayOpts};
-                let opts = DisplayOpts::default()
-                    .with_location()
-                    .with_sources(SourceFormat::MultiLine);
-                self.fmt_with_opts(f, opts)
+                if f.alternate() {
+                    match self {
+                        #(#match_debug_arms)*
+                    }
+                } else {
+                    use ::n0_error::{StackError};
+                    self.fmt_full(f)?;
+                }
+                Ok(())
             }
         }
+
         impl ::std::error::Error for #enum_ident #generics {
             fn source(&self) -> Option<&(dyn ::std::error::Error + 'static)> {
                 match self {
@@ -358,16 +365,26 @@ fn get_doc_or_display(attrs: &[Attribute]) -> Option<proc_macro2::TokenStream> {
     // Prefer #[display("...")]
     for attr in attrs {
         if attr.path().is_ident("display") {
-            if let Ok(lit) = attr.parse_args::<syn::LitStr>() {
-                return Some(quote! { write!(f, #lit) });
-            } else {
-                return Some(
-                    syn::Error::new_spanned(
-                        attr,
-                        "#[display] expects a string literal: #[display(\"...\")] ",
-                    )
-                    .to_compile_error(),
-                );
+            // Accept format!-style args: #[display("text {}", arg1, arg2, ...)]
+            match attr.parse_args_with(Punctuated::<Expr, syn::Token![,]>::parse_terminated) {
+                Ok(args) => {
+                    if args.is_empty() {
+                        return Some(
+                            syn::Error::new_spanned(
+                                attr,
+                                "#[display(..)] requires at least a format string",
+                            )
+                            .to_compile_error(),
+                        );
+                    }
+                    let mut it = args.into_iter();
+                    let fmt = it.next().unwrap();
+                    let rest: Vec<_> = it.collect();
+                    return Some(quote! { write!(f, #fmt #(, #rest)* ) });
+                }
+                Err(e) => {
+                    return Some(e.to_compile_error());
+                }
             }
         }
     }
