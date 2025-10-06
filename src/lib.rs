@@ -5,7 +5,7 @@ use std::{
 
 use yansi::Paint;
 
-pub use n0_error_macros::expand;
+pub use n0_error_macros::{Error, add_location};
 
 pub enum SourceFormat {
     OneLine,
@@ -156,14 +156,12 @@ impl<'a> fmt::Display for ErrorSource<'a> {
 
 pub struct Chain<'a> {
     current: Option<ErrorSource<'a>>,
-    current_is_transparent: bool,
 }
 
 impl<'a> Chain<'a> {
     pub fn new(item: ErrorSource<'a>) -> Self {
         Self {
             current: Some(item),
-            current_is_transparent: item.is_transparent(),
         }
     }
 

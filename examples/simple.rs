@@ -1,28 +1,37 @@
 mod error {
-    use std::{fmt, io, panic::Location};
+    use std::io;
 
-    #[n0_error::expand]
+    #[derive(n0_error::Error)]
+    #[n0_error::add_location]
     pub enum OperationError {
         /// Failed to copy
         Copy { source: CopyError },
     }
 
-    #[n0_error::expand]
+    #[derive(n0_error::Error)]
+    #[n0_error::add_location]
     pub enum CopyError {
         /// Read error
         Read {
-            #[from]
+            #[std]
             source: io::Error,
         },
         /// Write error
-        Write { source: io::Error },
-        #[display("Bad request - missing characters: {missing}")]
+        Write {
+            #[std]
+            source: io::Error,
+        },
+        #[display("Bad request - missing characters: {}", missing * 2)]
         BadRequest { missing: usize },
         #[transparent]
-        InvalidArgs { source: InvalidArgsError },
+        InvalidArgs {
+            #[from]
+            source: InvalidArgsError,
+        },
     }
 
-    #[n0_error::expand]
+    #[derive(n0_error::Error)]
+    #[n0_error::add_location]
     pub enum InvalidArgsError {
         /// Failed to parse arguments
         FailedToParse {},

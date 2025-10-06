@@ -1,60 +1,55 @@
 use heck::ToSnakeCase;
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
+use syn::parse::Parser;
 use syn::{
-    parse::{Parse, ParseStream},
-    parse_macro_input,
-    punctuated::Punctuated,
-    token::Comma,
-    Attribute, DataEnum, Field, Fields, FieldsNamed, Ident, LitStr, Variant,
+    parse_macro_input, punctuated::Punctuated, token::Comma, Attribute, DataEnum, Field, Fields,
+    FieldsNamed, Ident,
 };
 
-/// Attribute macro that expands an error enum into a sibling
-/// `pub mod expanded` module containing the enriched enum with
-/// location, constructors, and `StackError` + fmt impls.
-///
-/// Supported inputs on variants:
-/// - Leading doc comments (used as display text)
-/// - `#[display("...")]` attribute with a string literal format which
-///   may reference named fields via `{name}` placeholders.
+/// Attribute macro that adds a `location: &'static ::std::panic::Location<'static>`
+/// field to all named-field variants of an enum. Does nothing else.
 #[proc_macro_attribute]
-pub fn expand(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(item as syn::Item);
-
-    let (vis, ident, generics, data_enum) = match input {
+pub fn add_location(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let mut input = parse_macro_input!(item as syn::Item);
+    let out = match &mut input {
         syn::Item::Enum(item_enum) => {
-            let syn::ItemEnum {
-                vis,
-                ident,
-                generics,
-                variants,
-                attrs,
-                ..
-            } = &item_enum;
-            (
-                vis.clone(),
-                ident.clone(),
-                generics.clone(),
-                DataEnum {
-                    enum_token: Default::default(),
-                    brace_token: Default::default(),
-                    variants: variants.clone(),
-                },
-            )
-        }
-        syn::Item::Struct(_) | syn::Item::Union(_) | syn::Item::Fn(_) | syn::Item::Mod(_) => {
-            return syn::Error::new_spanned(input, "#[expand] only supports enums at the moment")
-                .to_compile_error()
-                .into();
+            for variant in item_enum.variants.iter_mut() {
+                match &mut variant.fields {
+                    Fields::Named(fields) => {
+                        let has_location = fields
+                            .named
+                            .iter()
+                            .any(|f| f.ident.as_ref().map(|i| i == "location").unwrap_or(false));
+                        if !has_location {
+                            // Inject `location` at the end.
+                            fields.named.push(
+                                syn::Field::parse_named
+                                    .parse2(quote! {
+                                        location: &'static ::std::panic::Location<'static>
+                                    })
+                                    .expect("failed to parse injected location field"),
+                            );
+                        }
+                    }
+                    _ => {
+                        return syn::Error::new_spanned(
+                            &variant.ident,
+                            "#[add_location] requires named-field variants",
+                        )
+                        .to_compile_error()
+                        .into();
+                    }
+                }
+            }
+            quote! { #item_enum }
         }
         _ => {
-            return syn::Error::new_spanned(input, "unsupported item for #[expand]")
+            return syn::Error::new_spanned(&input, "#[add_location] only supports enums")
                 .to_compile_error()
                 .into();
         }
     };
-
-    let out = generate_expanded_items(&vis, &ident, &data_enum, &generics);
     out.into()
 }
 
@@ -64,8 +59,34 @@ fn err(ident: &Ident, err: impl ToString) -> proc_macro2::TokenStream {
         .to_token_stream();
 }
 
-fn generate_expanded_items(
-    vis: &syn::Visibility,
+/// Derive macro that implements StackError, Display, Debug, std::error::Error,
+/// generates constructors, and `From<T>` impls for fields marked with `#[from]`.
+///
+/// Recognized attributes:
+/// - on variants: `#[display("...")]`, `#[transparent]`
+/// - on fields: `#[from]`, `#[std]` (mark std::error::Error source)
+#[proc_macro_derive(Error, attributes(display, transparent, from, std))]
+pub fn derive_error(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as syn::DeriveInput);
+    let enum_ident = &input.ident;
+    let generics = &input.generics;
+    let data_enum = match &input.data {
+        syn::Data::Enum(e) => DataEnum {
+            enum_token: e.enum_token,
+            brace_token: e.brace_token,
+            variants: e.variants.clone(),
+        },
+        _ => {
+            return syn::Error::new_spanned(&input, "#[derive(Error)] only supports enums")
+                .to_compile_error()
+                .into();
+        }
+    };
+    let out = generate_impls(enum_ident, &data_enum, generics);
+    out.into()
+}
+
+fn generate_impls(
     enum_ident: &Ident,
     data: &DataEnum,
     generics: &syn::Generics,
@@ -98,17 +119,16 @@ fn generate_expanded_items(
 
     let mut variants_info = vec![];
     for v in data.variants.iter() {
-        let fields = match v.fields {
-            Fields::Named(ref fields) => fields,
-            _ => {
-                return err(
+        let fields =
+            match v.fields {
+                Fields::Named(ref fields) => fields,
+                _ => return err(
                     &v.ident,
-                    "#[expand] is only supported on enums with only named-field variants",
-                )
-            }
-        };
+                    "#[derive(Error)] is only supported on enums with only named-field variants",
+                ),
+            };
 
-        // get source field
+        // get source field (by name `source` if present)
         let source_field = fields
             .named
             .iter()
@@ -142,19 +162,17 @@ fn generate_expanded_items(
             }
         };
 
-        // parse from attribute on variants
+        // parse #[from] attribute on fields
         let mut from = None;
         for field in fields.named.iter() {
-            for attr in &v.attrs {
-                if attr.path().is_ident("from") {
-                    if from.is_some() {
-                        return err(
-                            &field.ident.clone().expect("not a tuple"),
-                            "Only a single field in a variant can have a #[from] attribute.",
-                        );
-                    }
-                    from = Some(field);
+            if field.attrs.iter().any(|attr| attr.path().is_ident("from")) {
+                if from.is_some() {
+                    return err(
+                        &field.ident.clone().expect("named field"),
+                        "Only one field per variant may have #[from]",
+                    );
                 }
+                from = Some(field);
             }
         }
 
@@ -168,33 +186,32 @@ fn generate_expanded_items(
         })
     }
 
-    // Expanded enum variants include original fields plus `location`
-    let expanded_variants = variants_info.iter().map(|vi| {
-        let fields = &vi.fields.named;
-        let fields = if fields.is_empty() {
-            quote!()
-        } else {
-            quote! { #fields, }
-        };
-        let v_ident = &vi.ident;
-        quote! { #v_ident { #fields location: &'static ::std::panic::Location<'static> } }
-    });
-
     // Constructors like `fn read(source: ...) -> Self`
     let constructors = variants_info.iter().map(|vi| {
         let v_ident = &vi.ident;
         let fn_ident = Ident::new(&v_ident.to_string().to_snake_case(), v_ident.span());
-        let params = vi.fields.named.iter().map(|f| {
-            let ident = f.ident.as_ref().unwrap();
-            let ty = &f.ty;
-            quote! { #ident: #ty }
-        });
-        let mc = (!vi.fields().is_empty()).then(|| quote!(,));
-        let names = vi.field_idents();
+        let params = vi
+            .fields
+            .named
+            .iter()
+            .filter(|f| f.ident.as_ref().map(|i| i != "location").unwrap_or(true))
+            .map(|f| {
+                let ident = f.ident.as_ref().unwrap();
+                let ty = &f.ty;
+                quote! { #ident: #ty }
+            });
+        let names = vi.field_idents().filter(|i| i != &"location");
+        let comma = (!vi.fields().is_empty()
+            && vi
+                .fields
+                .named
+                .iter()
+                .any(|f| f.ident.as_ref().map(|i| i != "location").unwrap_or(true)))
+        .then(|| quote!(,));
         quote! {
             #[track_caller]
             pub fn #fn_ident(#(#params),*) -> Self {
-                Self::#v_ident { #(#names),* #mc location: ::std::panic::Location::caller() }
+                Self::#v_ident { #(#names),* #comma location: ::std::panic::Location::caller() }
             }
         }
     });
@@ -247,7 +264,10 @@ fn generate_expanded_items(
                 Some(expr) => {
                     let mc = (!vi.fields().is_empty()).then(|| quote!(,));
                     let names = vi.field_idents();
-                    quote! { Self::#v_ident { #(#names),* #mc .. } => { #expr } }
+                    quote! {
+                        #[allow(unused)]
+                        Self::#v_ident { #(#names),* #mc .. } => { #expr }
+                    }
                 }
                 None => {
                     // Fallback to variant name
@@ -275,10 +295,6 @@ fn generate_expanded_items(
     });
 
     quote! {
-        #vis enum #enum_ident #generics {
-            #( #expanded_variants, )*
-        }
-
         impl #enum_ident #generics {
             #( #constructors )*
         }
