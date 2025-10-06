@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 termcolor = "1.4.1"
 yansi = "1.0.1"
+n0-error-macros = { path = "n0-error-macros" }
