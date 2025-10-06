@@ -114,6 +114,10 @@ impl<'a> Chain<'a> {
 
     pub fn is_empty(&self) -> bool {
         self.0.is_none()
+            || self
+                .0
+                .map(|s| s.next_source().is_none())
+                .unwrap_or_default()
     }
 }
 

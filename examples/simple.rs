@@ -1,12 +1,25 @@
 mod error {
     use std::{fmt, io, panic::Location};
+
+    // TODO: proc macro
+    // #[n0_error::expand]
     enum CopyError {
         /// Read error
-        Read { source: io::Error },
+        Read {
+            source: io::Error,
+        },
         /// Write error
-        Write { source: io::Error },
+        Write {
+            source: io::Error,
+        },
+        // TODO display attr
+        // #[display("Bad request - missing characters: {missing}")]
+        BadRequest {
+            missing: usize,
+        },
     }
 
+    // TODO: remove, because handled by proc macro
     pub mod expanded {
         use std::{fmt, io, panic::Location};
 
@@ -21,6 +34,10 @@ mod error {
             /// Write error
             Write {
                 source: io::Error,
+                location: &'static Location<'static>,
+            },
+            BadRequest {
+                missing: usize,
                 location: &'static Location<'static>,
             },
         }
@@ -41,6 +58,14 @@ mod error {
                     location: Location::caller(),
                 }
             }
+
+            #[track_caller]
+            pub fn bad_request(missing: usize) -> Self {
+                Self::BadRequest {
+                    missing,
+                    location: Location::caller(),
+                }
+            }
         }
 
         impl StackError for CopyError {
@@ -48,6 +73,7 @@ mod error {
                 match self {
                     CopyError::Read { location, .. } => location,
                     CopyError::Write { location, .. } => location,
+                    CopyError::BadRequest { location, .. } => location,
                 }
             }
 
@@ -55,6 +81,7 @@ mod error {
                 match self {
                     CopyError::Read { source, .. } => Some(ErrorSource::Std(source)),
                     CopyError::Write { source, .. } => Some(ErrorSource::Std(source)),
+                    CopyError::BadRequest { .. } => None,
                 }
             }
 
@@ -62,6 +89,9 @@ mod error {
                 match self {
                     CopyError::Read { .. } => write!(f, "Read error"),
                     CopyError::Write { .. } => write!(f, "Write error"),
+                    CopyError::BadRequest { missing, .. } => {
+                        write!(f, "Bad request - missing characters: {missing}")
+                    }
                 }
             }
         }
@@ -95,6 +125,16 @@ use self::error::expanded::CopyError;
 fn main() {
     let inner = io::Error::new(io::ErrorKind::AddrInUse, "bad addr");
     let err = CopyError::read(inner);
+    println!("== display == ");
+    println!("{err}");
+    println!("== display alt == ");
+    println!("{err:#}");
+    println!("== display debug == ");
+    println!("{err:?}");
+
+    println!("\n\n bad request \n\n");
+
+    let err = CopyError::bad_request(32);
     println!("== display == ");
     println!("{err}");
     println!("== display alt == ");
