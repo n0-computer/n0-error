@@ -1,16 +1,21 @@
-use n0_error::Error;
+use n0_error::{Error, Result, ResultExt, StackError, add_location, ensure, format_err};
 
-// #[test]
-// fn test_anyhow_compat() -> Result {
-//     fn ok() -> anyhow::Result<()> {
-//         Ok(())
-//     }
+use crate::util::wait_sequential;
 
-//     ok()?;
+mod util;
 
-//     Ok(())
-// }
+#[test]
+fn test_anyhow_compat() -> Result {
+    fn ok() -> anyhow::Result<()> {
+        Ok(())
+    }
 
+    ok()?;
+
+    Ok(())
+}
+
+#[add_location]
 #[derive(Error)]
 enum MyError {
     #[display("A failure")]
@@ -19,131 +24,207 @@ enum MyError {
 
 #[test]
 fn test_whatever() {
-    // fn fail() -> Result {
-    //     snafu::whatever!("sad face");
-    // }
+    let _guard = wait_sequential();
 
-    fn fail_my_error() -> Result<(), MyError> {
-        Err(MyError::A {})
+    fn fail() -> Result {
+        n0_error::whatever!("sad face");
     }
 
-    // fn fail_whatever() -> Result {
-    //     snafu::whatever!(fail(), "sad");
-    //     Ok(())
-    // }
+    fn fail_my_error() -> Result<(), MyError> {
+        Err(MyError::a())
+    }
 
-    // fn fail_whatever_my_error() -> Result {
-    //     snafu::whatever!(fail_my_error(), "sad");
-    //     Ok(())
-    // }
+    fn fail_whatever() -> Result {
+        n0_error::whatever!(fail(), "sad");
+        Ok(())
+    }
 
-    // assert!(fail().is_err());
-    // assert_eq!(format!("{:?}", fail().unwrap_err()), "sad face");
-    // assert_eq!(format!("{}", fail().unwrap_err()), "sad face");
+    fn fail_whatever_my_error() -> Result {
+        n0_error::whatever!(fail_my_error(), "sad");
+        Ok(())
+    }
+
+    n0_error::set_backtrace_enabled(false);
+    assert!(fail().is_err());
+    assert_eq!(format!("{:?}", fail().unwrap_err()), "sad face");
+    assert_eq!(format!("{}", fail().unwrap_err()), "sad face");
+    //
+    assert!(fail_my_error().is_err());
+    assert_eq!(format!("{}", fail_my_error().unwrap_err()), "A failure");
+    assert_eq!(format!("{:#}", fail_my_error().unwrap_err()), "A failure");
+    assert_eq!(format!("{:?}", fail_my_error().unwrap_err()), "A failure");
+    assert_eq!(
+        format!("{:#?}", fail_my_error().unwrap_err()),
+        "A {\n    location: None,\n}"
+    );
+    assert!(fail_whatever().is_err());
+    assert!(fail_whatever_my_error().is_err());
+
+    assert_eq!(
+        format!("{:?}", fail_whatever().unwrap_err()),
+        "sad\nCaused by:\n    0: sad face"
+    );
+
+    assert_eq!(
+        format!("{:?}", fail_whatever()),
+        "Err(sad\nCaused by:\n    0: sad face)"
+    );
+
+    n0_error::set_backtrace_enabled(true);
+
     assert!(fail_my_error().is_err());
     assert_eq!(format!("{}", fail_my_error().unwrap_err()), "A failure");
     assert_eq!(format!("{:#}", fail_my_error().unwrap_err()), "A failure");
     assert_eq!(
         format!("{:?}", fail_my_error().unwrap_err()),
-        "A failure  \n"
+        format!("A failure (at tests/basic.rs:34:13)")
     );
-    assert_eq!(format!("{:#?}", fail_my_error().unwrap_err()), "A");
-    // assert!(fail_whatever().is_err());
-    // assert!(fail_whatever_my_error().is_err());
-
-    // assert_eq!(
-    //     format!("{:?}", fail_whatever().unwrap_err()),
-    //     "sad\n  0: sad face"
-    // );
-
-    // assert_eq!(format!("{:?}", fail_whatever()), "Err(sad\n  0: sad face)");
+    let expected = r#"A {
+    location: Some(
+        Location {
+            file: "tests/basic.rs",
+            line: 34,
+            column: 13,
+        },
+    ),
+}"#;
+    assert_eq!(format!("{:#?}", fail_my_error().unwrap_err()), expected);
 }
 
-// #[test]
-// fn test_context_none() {
-//     fn fail() -> Result {
-//         None.context("sad")
-//     }
+#[test]
+fn test_context_none() {
+    fn fail() -> Result {
+        None.context("sad")
+    }
 
-//     assert!(fail().is_err());
-// }
+    assert!(fail().is_err());
+}
 
-// #[test]
-// fn test_format_err() {
-//     fn fail() -> Result {
-//         Err(format_err!("sad: {}", 12))
-//     }
+#[test]
+fn test_format_err() {
+    fn fail() -> Result {
+        Err(format_err!("sad: {}", 12))
+    }
 
-//     assert!(fail().is_err());
-// }
+    assert!(fail().is_err());
+}
 
-// #[test]
-// fn test_io_err() {
-//     fn fail_io() -> std::io::Result<()> {
-//         Err(std::io::Error::other("sad IO"))
-//     }
+#[test]
+fn test_io_err() {
+    fn fail_io() -> std::io::Result<()> {
+        Err(std::io::Error::other("sad IO"))
+    }
 
-//     fn fail_custom() -> Result<(), MyError> {
-//         Ok(())
-//     }
+    fn fail_custom() -> Result<(), MyError> {
+        Ok(())
+    }
 
-//     fn fail_outer() -> Result {
-//         fail_io().e()?;
-//         fail_custom()?;
-//         Ok(())
-//     }
-//     let err = fail_outer().unwrap_err();
-//     assert_eq!(err.to_string(), "sad IO");
-// }
+    fn fail_outer() -> Result {
+        fail_io().e()?;
+        fail_custom()?;
+        Ok(())
+    }
+    let err = fail_outer().unwrap_err();
+    assert_eq!(err.to_string(), "sad IO");
+}
 
-// #[test]
-// fn test_message() {
-//     fn fail_box() -> Result<(), impl std::error::Error + Send + Sync + 'static> {
-//         Err(Box::new(std::io::Error::other("foo")))
-//     }
+#[test]
+fn test_message() {
+    fn fail_box() -> Result<(), impl std::error::Error + Send + Sync + 'static> {
+        Err(Box::new(std::io::Error::other("foo")))
+    }
 
-//     let my_res = fail_box().context("failed");
+    let my_res = fail_box().context("failed");
 
-//     let err = my_res.unwrap_err();
-//     let stack = err.stack();
-//     assert_eq!(stack.len(), 2);
-// }
+    let err = my_res.unwrap_err();
+    assert_eq!(format!("{err:#}"), "failed: foo");
+    let stack = err.stack();
+    assert_eq!(stack.count(), 2);
+}
 
-// #[test]
-// fn test_option() {
-//     fn fail_opt() -> Option<()> {
-//         None
-//     }
+#[test]
+fn test_option() {
+    fn fail_opt() -> Option<()> {
+        None
+    }
 
-//     let my_res = fail_opt().context("failed");
+    let my_res = fail_opt().context("failed");
 
-//     let err = my_res.unwrap_err();
-//     let stack = err.stack();
-//     assert_eq!(stack.len(), 2);
-// }
+    let err = my_res.unwrap_err();
+    assert_eq!(format!("{err:#}"), "failed: Expected some, found none");
+    let stack = err.stack();
+    assert_eq!(stack.count(), 2);
+}
 
-// #[test]
-// fn test_sources() {
-//     let err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
-//     let file_name = "foo.txt";
-//     let res: Result<(), _> = Err(err).with_context(|| format!("failed to read {file_name}"));
-//     let res: Result<(), _> = res.context("read error");
+#[test]
+fn test_sources() {
+    let _guard = wait_sequential();
+    n0_error::set_backtrace_enabled(false);
+    let err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+    let file_name = "foo.txt";
+    let res: Result<(), _> = Err(err).with_context(|| format!("failed to read {file_name}"));
+    let res: Result<(), _> = res.context("read error");
 
-//     let err = res.err().unwrap();
+    let err = res.err().unwrap();
 
-//     let fmt = format!("{err}");
-//     println!("short:\n{fmt}\n");
-//     assert_eq!(&fmt, "read error: failed to read foo.txt: file not found");
+    let fmt = format!("{err}");
+    println!("short:\n{fmt}\n");
+    assert_eq!(&fmt, "read error");
 
-//     let fmt = format!("{err:#}");
-//     println!("alternate:\n{fmt}\n");
-//     assert_eq!(
-//         &fmt,
-//         r#"read error
-//   0: failed to read foo.txt
-//   1: file not found"#
-//     );
+    let fmt = format!("{err:#}");
+    println!("alternate:\n{fmt}\n");
+    assert_eq!(&fmt, "read error: failed to read foo.txt: file not found");
 
-//     let fmt = format!("{err:?}");
-//     println!("debug:\n{fmt}\n");
-// }
+    let fmt = format!("{err:?}");
+    println!("debug :\n{fmt}\n");
+    assert_eq!(
+        &fmt,
+        r#"read error
+Caused by:
+    0: failed to read foo.txt
+    1: file not found"#
+    );
+
+    let fmt = format!("{err:#?}");
+    println!("debug alternate:\n{fmt}\n");
+
+    n0_error::set_backtrace_enabled(true);
+
+    let err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+    let file_name = "foo.txt";
+    let res: Result<(), _> = Err(err).with_context(|| format!("failed to read {file_name}"));
+    let res: Result<(), _> = res.context("read error");
+
+    let err = res.err().unwrap();
+
+    let fmt = format!("{err}");
+    println!("short:\n{fmt}\n");
+    assert_eq!(&fmt, "read error");
+
+    let fmt = format!("{err:#}");
+    println!("alternate:\n{fmt}\n");
+    assert_eq!(&fmt, "read error: failed to read foo.txt: file not found");
+
+    let fmt = format!("{err:?}");
+    println!("debug :\n{fmt}\n");
+    assert_eq!(
+        &fmt,
+        r#"read error (at tests/basic.rs:196:34)
+Caused by:
+    0: failed to read foo.txt  (at tests/basic.rs:195:39)
+    1: file not found"#
+    );
+    let fmt = format!("{err:#?}");
+    println!("debug alternate:\n{fmt}\n");
+}
+
+#[test]
+fn test_ensure() {
+    let _guard = wait_sequential();
+    fn foo() -> Result {
+        ensure!(false, "sad face");
+        Ok(())
+    }
+    let err = foo().unwrap_err();
+    assert_eq!(format!("{err}"), "sad face")
+}

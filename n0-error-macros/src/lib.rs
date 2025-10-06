@@ -225,8 +225,11 @@ fn generate_impls(
     let match_std_source_arms = variants_info.iter().map(|vi| {
         let v_ident = &vi.ident;
         match vi.source {
-            SourceKind::Stack | SourceKind::Std => {
+            SourceKind::Std => {
                 quote! { Self::#v_ident { source, .. } => Some(source as & dyn std::error::Error), }
+            }
+            SourceKind::Stack => {
+                quote! { Self::#v_ident { source, .. } => Some(::n0_error::StackError::as_std(source)), }
             }
             SourceKind::None => quote! { Self::#v_ident { .. } => None, },
         }
@@ -306,6 +309,10 @@ fn generate_impls(
         }
 
         impl ::n0_error::StackError for #enum_ident #generics {
+            fn as_std(&self) -> &(dyn ::std::error::Error + 'static) {
+                self
+            }
+
             fn location(&self) -> Option<::n0_error::Location> {
                 match self {
                     #( #match_location_arms, )*
@@ -357,6 +364,14 @@ fn generate_impls(
                 }
             }
         }
+
+        impl #impl_generics ::core::convert::From<#enum_ident> for ::n0_error::AnyError #ty_generics #where_clause {
+            #[track_caller]
+            fn from(source: #enum_ident) -> Self {
+                ::n0_error::AnyError::Stack(::std::boxed::Box::new(source))
+            }
+        }
+
         #( #from_impls )*
     }
 }
