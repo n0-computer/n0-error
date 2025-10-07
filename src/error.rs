@@ -145,11 +145,20 @@ pub trait StackError: std::fmt::Display + std::fmt::Debug + Send + Sync {
         Ok(())
     }
 
+    #[track_caller]
     fn into_any(self) -> AnyError
     where
         Self: Sized + 'static,
     {
         AnyError::Stack(Box::new(self))
+    }
+
+    #[track_caller]
+    fn context(self, context: impl fmt::Display) -> AnyError
+    where
+        Self: Sized + 'static,
+    {
+        self.into_any().context(context)
     }
 }
 

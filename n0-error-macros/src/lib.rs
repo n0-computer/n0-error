@@ -1,10 +1,8 @@
 use heck::ToSnakeCase;
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
-use syn::parse::Parser;
-use syn::Variant;
 use syn::{
-    parse_macro_input, punctuated::Punctuated, token::Comma, Attribute, Expr, Field, Fields,
+    parse_macro_input, parse_quote, punctuated::Punctuated, Attribute, Expr, Field, Fields,
     FieldsNamed, Ident,
 };
 
@@ -16,32 +14,53 @@ pub fn add_location(_attr: TokenStream, item: TokenStream) -> TokenStream {
     match &mut input {
         syn::Item::Enum(item_enum) => {
             for variant in item_enum.variants.iter_mut() {
-                match &mut variant.fields {
-                    Fields::Named(fields) => {
-                        let field = quote! { location: Option<::n0_error::Location> };
-                        fields
-                            .named
-                            .push(syn::Field::parse_named.parse2(field).unwrap());
-                    }
-                    _ => {
-                        return err(&variant, "#[add_location] requires named-field variants")
-                            .into();
-                    }
+                if let Err(err) = add_location_field(&mut variant.fields) {
+                    return err.into();
                 }
             }
             quote! { #item_enum }
         }
+        syn::Item::Struct(item_struct) => {
+            if let Err(err) = add_location_field(&mut item_struct.fields) {
+                return err.into();
+            }
+            quote! { #item_struct }
+        }
         _ => {
-            return err(&input, "#[add_location] only supports enums").into();
+            return err(&input, "#[add_location] only supports enums and structs").into();
         }
     }
     .into()
 }
 
+fn add_location_field(fields: &mut Fields) -> Result<(), TokenStream> {
+    let field = parse_quote! { location: Option<::n0_error::Location> };
+    match fields {
+        Fields::Named(fields) => {
+            fields.named.push(field);
+            Ok(())
+        }
+        Fields::Unit => {
+            let mut named = FieldsNamed {
+                brace_token: Default::default(),
+                named: Default::default(),
+            };
+            named.named.push(field);
+            *fields = Fields::Named(named);
+            Ok(())
+        }
+        _ => Err(err(
+            &fields,
+            "#[add_location] does not support tuple variants or structs",
+        )
+        .into()),
+    }
+}
+
 fn err(ident: impl ToTokens, err: impl ToString) -> proc_macro2::TokenStream {
-    return syn::Error::new_spanned(ident, err.to_string())
+    syn::Error::new_spanned(ident, err.to_string())
         .to_compile_error()
-        .to_token_stream();
+        .to_token_stream()
 }
 
 /// Derive macro that implements StackError, Display, Debug, std::error::Error,
@@ -53,22 +72,29 @@ fn err(ident: impl ToTokens, err: impl ToString) -> proc_macro2::TokenStream {
 #[proc_macro_derive(Error, attributes(display, transparent, from, std))]
 pub fn derive_error(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as syn::DeriveInput);
-    let enum_ident = &input.ident;
+    let item_ident = &input.ident;
     let generics = &input.generics;
-    let r#enum = match &input.data {
-        syn::Data::Enum(e) => e,
-        _ => return err(&input, "#[derive(Error)] only supports enums").into(),
-    };
-    let variants_info: Result<Vec<_>, _> = r#enum
-        .variants
-        .iter()
-        .map(|v| VariantInfo::parse(v))
-        .collect();
-    let variants_info = match variants_info {
-        Ok(x) => x,
-        Err(err) => return err.into(),
-    };
-    generate_impls(enum_ident, generics, variants_info).into()
+    match &input.data {
+        syn::Data::Enum(item_enum) => {
+            let infos: Result<Vec<_>, _> = item_enum
+                .variants
+                .iter()
+                .map(|v| VariantInfo::parse(&v.ident, &v.fields, &v.attrs))
+                .collect();
+            match infos {
+                Ok(variants) => generate_enum_impls(item_ident, generics, variants),
+                Err(err) => err,
+            }
+        }
+        syn::Data::Struct(item) => {
+            match VariantInfo::parse(&item_ident, &item.fields, &input.attrs) {
+                Err(err) => err,
+                Ok(info) => generate_struct_impl(item_ident, generics, info),
+            }
+        }
+        _ => err(&input, "#[derive(Error)] only supports enums"),
+    }
+    .into()
 }
 
 enum SourceKind {
@@ -80,7 +106,7 @@ enum SourceKind {
 // For each variant, capture doc comment text or #[display] attr
 struct VariantInfo<'a> {
     ident: Ident,
-    fields: &'a FieldsNamed,
+    fields: Vec<&'a Field>,
     display: Option<proc_macro2::TokenStream>,
     source: SourceKind,
     transparent: bool,
@@ -88,8 +114,8 @@ struct VariantInfo<'a> {
 }
 
 impl<'a> VariantInfo<'a> {
-    fn fields(&self) -> &Punctuated<Field, Comma> {
-        &self.fields.named
+    fn fields(&self) -> &Vec<&Field> {
+        &self.fields
     }
 
     fn field_idents(&self) -> impl Iterator<Item = &Ident> {
@@ -99,12 +125,14 @@ impl<'a> VariantInfo<'a> {
     fn location(&self) -> Option<&Field> {
         self.fields()
             .iter()
+            .copied()
             .find(|f| f.ident.as_ref().unwrap() == "location")
     }
 
     fn fields_without_location(&self) -> impl Iterator<Item = &Field> {
         self.fields()
             .iter()
+            .copied()
             .filter(|f| f.ident.as_ref().unwrap() != "location")
     }
 
@@ -113,27 +141,30 @@ impl<'a> VariantInfo<'a> {
             .map(|f| f.ident.as_ref().unwrap())
     }
 
-    fn parse(v: &'a Variant) -> Result<VariantInfo<'a>, proc_macro2::TokenStream> {
-        let fields =
-            match v.fields {
-                Fields::Named(ref fields) => fields,
-                _ => return Err(err(
-                    &v.ident,
-                    "#[derive(Error)] is only supported on enums with only named-field variants",
-                )),
-            };
+    fn parse(
+        ident: &Ident,
+        fields: &'a Fields,
+        attrs: &[Attribute],
+    ) -> Result<VariantInfo<'a>, proc_macro2::TokenStream> {
+        let fields: Vec<&Field> = match fields {
+            Fields::Named(ref fields) => fields.named.iter().collect(),
+            Fields::Unit => vec![],
+            Fields::Unnamed(ref fields) => fields.unnamed.iter().collect(), // _ => return Err(err(
+                                                                            //     ident,
+                                                                            //     "#[derive(Error)] is only supported on structs or enums with only named-field variants",
+                                                                            // )),
+        };
 
         // get source field (by name `source` if present)
         let source_field = fields
-            .named
             .iter()
-            .find(|f| f.ident.as_ref().unwrap() == "source");
+            .find(|f| f.ident.as_ref().map(|i| i == "source").unwrap_or(false));
 
         // parse transparent attribute
-        let transparent = v.attrs.iter().any(|a| a.path().is_ident("transparent"));
+        let transparent = attrs.iter().any(|a| a.path().is_ident("transparent"));
         if transparent && source_field.is_none() {
             return Err(err(
-                &v.ident,
+                ident,
                 "Variants with a #[transparent] attribute need a single `source` field",
             ));
         }
@@ -151,7 +182,7 @@ impl<'a> VariantInfo<'a> {
 
         // parse #[from] attribute on fields
         let mut from = None;
-        for field in fields.named.iter() {
+        for field in fields.iter() {
             if field.attrs.iter().any(|attr| attr.path().is_ident("from")) {
                 if from.is_some() {
                     return Err(err(
@@ -159,14 +190,14 @@ impl<'a> VariantInfo<'a> {
                         "Only one field per variant may have #[from]",
                     ));
                 }
-                from = Some(field);
+                from = Some(*field);
             }
         }
 
         Ok(VariantInfo {
-            ident: v.ident.clone(),
+            ident: ident.clone(),
             fields,
-            display: get_doc_or_display(&v.attrs),
+            display: get_doc_or_display(&attrs),
             source: source_kind,
             transparent,
             from,
@@ -174,13 +205,13 @@ impl<'a> VariantInfo<'a> {
     }
 }
 
-fn generate_impls(
+fn generate_enum_impls(
     enum_ident: &Ident,
     generics: &syn::Generics,
-    variants_info: Vec<VariantInfo>,
+    variants: Vec<VariantInfo>,
 ) -> proc_macro2::TokenStream {
     // Constructors like `fn read(source: ...) -> Self`
-    let constructors = variants_info.iter().map(|vi| {
+    let constructors = variants.iter().map(|vi| {
         let v_ident = &vi.ident;
         let fn_ident = Ident::new(&v_ident.to_string().to_snake_case(), v_ident.span());
         let params = vi.fields_without_location().map(|f| {
@@ -202,7 +233,7 @@ fn generate_impls(
     });
 
     // StackError impl pieces
-    let match_location_arms = variants_info.iter().map(|vi| {
+    let match_location_arms = variants.iter().map(|vi| {
         let v_ident = &vi.ident;
         if vi.location().is_some() {
             let suffix = (vi.fields().len() > 1).then(|| quote!(, ..));
@@ -213,7 +244,7 @@ fn generate_impls(
         }
     });
 
-    let match_source_arms = variants_info.iter().map(|vi| {
+    let match_source_arms = variants.iter().map(|vi| {
         let v_ident = &vi.ident;
         match vi.source {
             SourceKind::Stack => quote! { Self::#v_ident { source, .. } => Some(::n0_error::ErrorSource::Stack(source)), },
@@ -222,7 +253,7 @@ fn generate_impls(
         }
     });
 
-    let match_std_source_arms = variants_info.iter().map(|vi| {
+    let match_std_source_arms = variants.iter().map(|vi| {
         let v_ident = &vi.ident;
         match vi.source {
             SourceKind::Std => {
@@ -235,7 +266,7 @@ fn generate_impls(
         }
     });
 
-    let match_transparent_arms = variants_info.iter().map(|vi| {
+    let match_transparent_arms = variants.iter().map(|vi| {
         let v_ident = &vi.ident;
         if vi.transparent {
             quote! { Self::#v_ident { .. } => true }
@@ -244,7 +275,7 @@ fn generate_impls(
         }
     });
 
-    let match_fmt_message_arms = variants_info.iter().map(|vi| {
+    let match_fmt_message_arms = variants.iter().map(|vi| {
         let v_ident = &vi.ident;
         if vi.transparent {
             quote! { Self::#v_ident { source, .. } => { write!(f, "{source}") } }
@@ -267,7 +298,7 @@ fn generate_impls(
         }
     });
 
-    let match_debug_arms = variants_info.iter().map(|vi| {
+    let match_debug_arms = variants.iter().map(|vi| {
         let v_ident = &vi.ident;
         let field_idents = vi.field_idents();
         let print = field_idents.map(|ident| {
@@ -285,7 +316,7 @@ fn generate_impls(
 
     // From impls for variants marked with #[from]
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let from_impls = variants_info.iter().filter_map(|vi| vi.from.map(|field| (vi, field))).map(|(vi, field)| {
+    let from_impls = variants.iter().filter_map(|vi| vi.from.map(|field| (vi, field))).map(|(vi, field)| {
         let v_ident = &vi.ident;
         let src_ty = &field.ty;
         let src_field = &field.ident;
@@ -376,52 +407,208 @@ fn generate_impls(
     }
 }
 
+fn generate_struct_impl(
+    item_ident: &Ident,
+    generics: &syn::Generics,
+    info: VariantInfo,
+) -> proc_macro2::TokenStream {
+    let constructor = {
+        let params = info.fields_without_location().map(|f| {
+            let ident = f.ident.as_ref().unwrap();
+            let ty = &f.ty;
+            quote! { #ident: #ty }
+        });
+        let names = info.field_idents_without_location();
+        let location = info
+            .location()
+            .map(|_| quote!(location: ::n0_error::location()));
+        let comma = (location.is_some() && info.fields().len() > 1).then(|| quote!(,));
+        quote! {
+            #[track_caller]
+            pub fn new(#(#params),*) -> Self {
+                Self { #(#names),* #comma #location }
+            }
+        }
+    };
+    let get_location = if info.location().is_some() {
+        quote!(self.location)
+    } else {
+        quote! { None }
+    };
+
+    let get_error_source = match info.source {
+        SourceKind::Stack => quote! { Some(::n0_error::ErrorSource::Stack(&self.source)) },
+        SourceKind::Std => quote! { Some(::n0_error::ErrorSource::Std(&self.source)) },
+        SourceKind::None => quote! { None },
+    };
+
+    let get_std_source = match info.source {
+        SourceKind::Std => quote! { Some(source as & dyn std::error::Error) },
+        SourceKind::Stack => quote! { Some(::n0_error::StackError::as_std(source)) },
+        SourceKind::None => quote! { None },
+    };
+
+    let get_transparent = if info.transparent {
+        quote! { true }
+    } else {
+        quote! { false }
+    };
+
+    let get_display = {
+        if info.transparent {
+            quote! { write!(f, "{}", self.source) }
+        } else {
+            match &info.display {
+                Some(expr) => {
+                    let mc = (!info.fields().is_empty()).then(|| quote!(,));
+                    let names = info.field_idents();
+                    quote! {
+                        #[allow(unused)]
+                        let Self { #(#names),* #mc .. } = self;
+                        #expr
+                    }
+                }
+                None => {
+                    // Fallback to struct name
+                    let text = info.ident.to_string();
+                    quote! { write!(f, #text) }
+                }
+            }
+        }
+    };
+
+    let get_debug = {
+        let print = info.field_idents().map(|ident| {
+            let ident_s = ident.to_string();
+            quote! { .field(#ident_s, &self.#ident) }
+        });
+        let item_name = info.ident.to_string();
+        quote! {
+            f.debug_struct(#item_name)#(#print)*.finish()?;
+        }
+    };
+
+    // From impls for variants marked with #[from]
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let get_from = if let Some(field) = info.from {
+        let src_ty = &field.ty;
+        let src_field = &field.ident;
+        let location = info
+            .location()
+            .map(|_| quote!(location: ::n0_error::location()));
+        let comma = (location.is_some() && info.fields().len() > 1).then(|| quote!(,));
+        Some(quote! {
+            impl #impl_generics ::core::convert::From<#src_ty> for #item_ident #ty_generics #where_clause {
+                #[track_caller]
+                fn from(source: #src_ty) -> Self {
+                    Self { #src_field: source #comma #location }
+                }
+            }
+        })
+    } else {
+        None
+    };
+
+    quote! {
+
+        impl #impl_generics #item_ident #ty_generics #where_clause {
+            #constructor
+        }
+
+        impl ::n0_error::StackError for #item_ident #generics {
+            fn as_std(&self) -> &(dyn ::std::error::Error + 'static) {
+                self
+            }
+
+            fn location(&self) -> Option<::n0_error::Location> {
+                #get_location
+            }
+            fn source(&self) -> Option<::n0_error::ErrorSource<'_>> {
+                #get_error_source
+            }
+            fn is_transparent(&self) -> bool {
+                #get_transparent
+            }
+        }
+
+        impl ::std::fmt::Display for #item_ident #generics {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                use ::n0_error::{SourceFormat, StackError};
+                #get_display?;
+                if f.alternate() {
+                    self.fmt_sources(f, SourceFormat::OneLine)?;
+                }
+                Ok(())
+            }
+        }
+
+        impl ::std::fmt::Debug for #item_ident #generics {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                if f.alternate() {
+                    #get_debug
+                } else {
+                    use ::n0_error::{StackError};
+                    self.fmt_full(f)?;
+                }
+                Ok(())
+            }
+        }
+
+        impl ::std::error::Error for #item_ident #generics {
+            fn source(&self) -> Option<&(dyn ::std::error::Error + 'static)> {
+                #get_std_source
+            }
+        }
+
+        impl #impl_generics ::core::convert::From<#item_ident> for ::n0_error::AnyError #ty_generics #where_clause {
+            #[track_caller]
+            fn from(source: #item_ident) -> Self {
+                ::n0_error::AnyError::Stack(::std::boxed::Box::new(source))
+            }
+        }
+
+        #get_from
+    }
+}
+
 fn get_doc_or_display(attrs: &[Attribute]) -> Option<proc_macro2::TokenStream> {
     // Prefer #[display("...")]
-    for attr in attrs {
-        if attr.path().is_ident("display") {
-            // Accept format!-style args: #[display("text {}", arg1, arg2, ...)]
-            match attr.parse_args_with(Punctuated::<Expr, syn::Token![,]>::parse_terminated) {
-                Ok(args) => {
-                    if args.is_empty() {
-                        return Some(
-                            syn::Error::new_spanned(
-                                attr,
-                                "#[display(..)] requires at least a format string",
-                            )
-                            .to_compile_error(),
-                        );
-                    }
-                    let mut it = args.into_iter();
-                    let fmt = it.next().unwrap();
-                    let rest: Vec<_> = it.collect();
-                    return Some(quote! { write!(f, #fmt #(, #rest)* ) });
-                }
-                Err(e) => {
-                    return Some(e.to_compile_error());
-                }
+    if let Some(attr) = attrs.iter().find(|a| a.path().is_ident("display")) {
+        // Accept format!-style args: #[display("text {}", arg1, arg2, ...)]
+        match attr.parse_args_with(Punctuated::<Expr, syn::Token![,]>::parse_terminated) {
+            Ok(args) if args.is_empty() => Some(err(
+                attr,
+                "#[display(..)] requires at least a format string",
+            )),
+            Ok(args) => {
+                let mut it = args.into_iter();
+                let fmt = it.next().unwrap();
+                let rest: Vec<_> = it.collect();
+                Some(quote! { write!(f, #fmt #(, #rest)* ) })
             }
+            Err(e) => Some(e.to_compile_error()),
         }
-    }
-    // Otherwise collect doc lines: #[doc = "..."]
-    let mut docs: Vec<String> = Vec::new();
-    for attr in attrs {
-        if attr.path().is_ident("doc") {
-            if let syn::Meta::NameValue(nv) = &attr.meta {
-                if let syn::Expr::Lit(syn::ExprLit {
-                    lit: syn::Lit::Str(s),
-                    ..
-                }) = &nv.value
-                {
-                    docs.push(s.value().trim().to_string());
-                }
-            }
-        }
-    }
-    if docs.is_empty() {
-        None
     } else {
-        let doc = docs.join("\n");
-        Some(quote! { write!(f, #doc) })
+        // Otherwise collect doc lines: #[doc = "..."]
+        let docs: Vec<String> = attrs
+            .iter()
+            .filter(|a| a.path().is_ident("doc"))
+            .filter_map(|attr| {
+                let s = attr.meta.require_name_value().ok()?;
+                match &s.value {
+                    syn::Expr::Lit(syn::ExprLit {
+                        lit: syn::Lit::Str(s),
+                        ..
+                    }) => Some(s.value().trim().to_string()),
+                    _ => None,
+                }
+            })
+            .collect();
+        if docs.is_empty() {
+            None
+        } else {
+            let doc = docs.join("\n");
+            Some(quote! { write!(f, #doc) })
+        }
     }
 }

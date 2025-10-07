@@ -228,3 +228,84 @@ fn test_ensure() {
     let err = foo().unwrap_err();
     assert_eq!(format!("{err}"), "sad face")
 }
+
+#[derive(n0_error::Error)]
+struct SomeError;
+
+#[derive(n0_error::Error)]
+#[display("fail ({code})")]
+struct SomeErrorFields {
+    code: u32,
+}
+
+#[test]
+fn test_structs() {
+    let _guard = wait_sequential();
+    n0_error::set_backtrace_enabled(false);
+    fn fail_some_error() -> Result<(), SomeError> {
+        Err(SomeError)
+    }
+
+    fn fail_some_error_fields() -> Result<(), SomeErrorFields> {
+        Err(SomeErrorFields { code: 22 })
+    }
+
+    let res = fail_some_error();
+    let err = res.unwrap_err();
+    assert_eq!(format!("{err}"), "SomeError");
+    let err2 = err.context("bad");
+    assert_eq!(format!("{err2:#}"), "bad: SomeError");
+
+    let res = fail_some_error_fields();
+    let err = res.unwrap_err();
+    assert_eq!(format!("{err}"), "fail (22)");
+    let err2 = err.context("bad");
+    assert_eq!(format!("{err2:#}"), "bad: fail (22)");
+}
+
+#[add_location]
+#[derive(n0_error::Error)]
+struct SomeErrorLoc;
+
+#[add_location]
+#[derive(n0_error::Error)]
+#[display("fail ({code})")]
+struct SomeErrorLocFields {
+    code: u32,
+}
+
+#[test]
+fn test_structs_location() {
+    let _guard = wait_sequential();
+    n0_error::set_backtrace_enabled(true);
+    fn fail_some_error() -> Result<(), SomeErrorLoc> {
+        Err(SomeErrorLoc::new())
+    }
+
+    fn fail_some_error_fields() -> Result<(), SomeErrorLocFields> {
+        Err(SomeErrorLocFields::new(22))
+    }
+
+    let res = fail_some_error();
+    let err = res.unwrap_err();
+    assert_eq!(format!("{err}"), "SomeErrorLoc");
+    assert_eq!(
+        format!("{err:?}"),
+        "SomeErrorLoc (at tests/basic.rs:282:13)"
+    );
+    let err2 = err.context("bad");
+    assert_eq!(format!("{err2:#}"), "bad: SomeErrorLoc");
+
+    let res = fail_some_error_fields();
+    let err = res.unwrap_err();
+    assert_eq!(format!("{err}"), "fail (22)");
+    let err2 = err.context("bad");
+    assert_eq!(format!("{err2:#}"), "bad: fail (22)");
+    println!("{err2:?}");
+    assert_eq!(
+        format!("{err2:?}"),
+        r#"bad (at tests/basic.rs:302:20)
+Caused by:
+    0: fail (22)  (at tests/basic.rs:286:13)"#
+    );
+}
