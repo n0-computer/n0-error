@@ -97,10 +97,9 @@ where
     where
         F: FnOnce() -> String,
     {
-        let context = context();
         match self {
             Ok(v) => Ok(v),
-            Err(err) => Err(AnyError::std(err).context(context)),
+            Err(err) => Err(AnyError::std(err).context(context())),
         }
     }
 }
@@ -127,10 +126,9 @@ impl<T> ResultExt<T> for Option<T> {
     where
         F: FnOnce() -> String,
     {
-        let context = context();
         match self {
             Some(v) => Ok(v),
-            None => Err(NoneError::new().context(context)),
+            None => Err(NoneError::new().context(context())),
         }
     }
 }
@@ -157,8 +155,9 @@ impl<T> ResultExt<T> for Result<T, AnyError> {
     where
         F: FnOnce() -> String,
     {
-        let ctx = context();
-        // TODO needless double string alloc
-        self.context(ctx)
+        match self {
+            Ok(v) => Ok(v),
+            Err(err) => Err(err.context(context())),
+        }
     }
 }
