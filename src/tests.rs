@@ -1,6 +1,5 @@
-use crate::{Error, Result, ResultExt, StackErrorExt, add_location, ensure, format_err};
-
 use self::util::wait_sequential;
+use crate::{Error, Result, ResultExt, StackErrorExt, add_location, ensure, format_err};
 
 mod util;
 

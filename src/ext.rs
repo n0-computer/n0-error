@@ -10,7 +10,7 @@ macro_rules! whatever {
         });
     };
     ($source:expr, $fmt:literal$(, $($arg:expr),* $(,)?)*) => {
-        use crate::StackErrorExt;
+        use $crate::StackErrorExt;
         match $source {
             core::result::Result::Ok(v) => v,
             core::result::Result::Err(e) => {
@@ -29,7 +29,7 @@ macro_rules! whatever {
 macro_rules! format_err {
     ($fmt:literal$(, $($arg:expr),* $(,)?)?) => {
         {
-            use crate::StackErrorExt;
+            use $crate::StackErrorExt;
             $crate::FromString::without_source(
                 format!($fmt$(, $($arg),*)*),
             ).into_any()
