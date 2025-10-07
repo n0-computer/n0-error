@@ -1,6 +1,8 @@
 use std::sync::OnceLock;
 
-pub type Location = &'static std::panic::Location<'static>;
+#[derive(derive_more::Debug, derive_more::Display, Clone)]
+#[debug("{_0:?}")]
+pub struct Location(&'static std::panic::Location<'static>);
 
 #[cfg(test)]
 static BACKTRACE_ENABLED: OnceLock<std::sync::RwLock<bool>> = OnceLock::new();
@@ -40,7 +42,7 @@ pub fn set_backtrace_enabled(value: bool) {
 #[track_caller]
 pub fn location() -> Option<Location> {
     if backtrace_enabled() {
-        Some(std::panic::Location::caller())
+        Some(Location(std::panic::Location::caller()))
     } else {
         None
     }

@@ -31,60 +31,38 @@ impl DisplayOpts {
     // }
 }
 
-pub trait StackError: std::fmt::Display + std::fmt::Debug + Send + Sync {
+pub trait StackError: std::fmt::Display + std::fmt::Debug + Send + Sync + 'static {
     fn as_std(&self) -> &(dyn ::std::error::Error + 'static);
-    fn location(&self) -> Option<Location>;
+    fn location(&self) -> Option<&Location>;
     fn source(&self) -> Option<ErrorRef<'_>>;
     fn is_transparent(&self) -> bool;
+}
 
-    fn as_source(&self) -> ErrorRef<'_>
-    where
-        Self: Sized,
-    {
-        ErrorRef::Stack(self)
-    }
-
-    fn report(&self) -> impl fmt::Display
-    where
-        Self: Sized,
-    {
-        Report(self)
-    }
-
-    fn stack(&self) -> impl Iterator<Item = ErrorRef<'_>>
-    where
-        Self: Sized,
-    {
+impl dyn StackError {
+    pub fn stack(&self) -> impl Iterator<Item = ErrorRef<'_>> {
         Chain::new(Some(ErrorRef::Stack(self)))
     }
 
-    fn sources(&self) -> impl Iterator<Item = ErrorRef<'_>>
-    where
-        Self: Sized,
-    {
+    pub fn sources(&self) -> impl Iterator<Item = ErrorRef<'_>> {
         self.stack().skip(1)
     }
 
-    #[track_caller]
-    fn into_any(self) -> AnyError
-    where
-        Self: Sized + 'static,
-    {
-        AnyError::Stack(Box::new(self))
+    pub fn fmt_location(&self, f: &mut Formatter) -> fmt::Result {
+        if let Some(location) = self.location() {
+            write!(f, " (at {})", location)?;
+        }
+        Ok(())
     }
 
-    #[track_caller]
-    fn context(self, context: impl fmt::Display) -> AnyError
-    where
-        Self: Sized + 'static,
-    {
-        self.into_any().context(context)
+    pub fn as_source(&self) -> ErrorRef<'_> {
+        ErrorRef::Stack(self)
     }
 
-    fn fmt_full(&self, f: &mut Formatter) -> fmt::Result
-    where
-        Self: Sized,
-    {
+    pub fn report(&self) -> impl fmt::Display {
+        Report(self)
+    }
+
+    pub fn fmt_full(&self, f: &mut Formatter) -> fmt::Result {
         let location = backtrace_enabled();
         let opts = DisplayOpts::default()
             // TODO: When to enable color?
@@ -94,13 +72,9 @@ pub trait StackError: std::fmt::Display + std::fmt::Debug + Send + Sync {
         self.fmt_with_opts(f, opts)
     }
 
-    fn fmt_with_opts(&self, f: &mut Formatter, opts: DisplayOpts) -> fmt::Result
-    where
-        Self: Sized,
-    {
+    pub fn fmt_with_opts(&self, f: &mut Formatter, opts: DisplayOpts) -> fmt::Result {
         write!(f, "{self}")?;
-        if opts.location && self.location().is_some() {
-            write!(f, " ")?;
+        if opts.location {
             self.fmt_location(f)?;
         }
         if let Some(format) = opts.sources {
@@ -109,19 +83,7 @@ pub trait StackError: std::fmt::Display + std::fmt::Debug + Send + Sync {
         Ok(())
     }
 
-    fn fmt_location(&self, f: &mut Formatter) -> fmt::Result {
-        if let Some(location) = self.location() {
-            let s = format!("(at {})", location);
-            // write!(f, "{}", s.dim())?;
-            write!(f, "{s}")?;
-        }
-        Ok(())
-    }
-
-    fn fmt_sources(&self, f: &mut Formatter, format: SourceFormat) -> fmt::Result
-    where
-        Self: Sized,
-    {
+    pub fn fmt_sources(&self, f: &mut Formatter, format: SourceFormat) -> fmt::Result {
         let mut chain = self
             .sources()
             // We skip errors marked as transparent.
@@ -138,8 +100,7 @@ pub trait StackError: std::fmt::Display + std::fmt::Debug + Send + Sync {
                 }
                 SourceFormat::MultiLine { location } => {
                     write!(f, "    {i}: {item}")?;
-                    if location && item.location().is_some() {
-                        write!(f, "  ")?;
+                    if location {
                         item.fmt_location(f)?;
                     }
                     if chain.peek().is_some() {
@@ -151,6 +112,48 @@ pub trait StackError: std::fmt::Display + std::fmt::Debug + Send + Sync {
         Ok(())
     }
 }
+
+pub trait StackErrorExt: StackError + Sized {
+    #[track_caller]
+    fn into_any(self) -> AnyError {
+        AnyError::Stack(Box::new(self))
+    }
+
+    #[track_caller]
+    fn context(self, context: impl fmt::Display) -> AnyError {
+        self.into_any().context(context)
+    }
+
+    fn stack(&self) -> impl Iterator<Item = ErrorRef<'_>> {
+        (self as &dyn StackError).stack()
+    }
+
+    fn sources(&self) -> impl Iterator<Item = ErrorRef<'_>> {
+        (self as &dyn StackError).sources()
+    }
+
+    fn fmt_location(&self, f: &mut Formatter) -> fmt::Result {
+        (self as &dyn StackError).fmt_location(f)
+    }
+
+    fn report(&self) -> impl fmt::Display {
+        (self as &dyn StackError).report()
+    }
+
+    fn fmt_full(&self, f: &mut Formatter) -> fmt::Result {
+        (self as &dyn StackError).fmt_full(f)
+    }
+
+    fn fmt_with_opts(&self, f: &mut Formatter, opts: DisplayOpts) -> fmt::Result {
+        (self as &dyn StackError).fmt_with_opts(f, opts)
+    }
+
+    fn fmt_sources(&self, f: &mut Formatter, format: SourceFormat) -> fmt::Result {
+        (self as &dyn StackError).fmt_sources(f, format)
+    }
+}
+
+impl<T: StackError + Sized> StackErrorExt for T {}
 
 /// Reference to an error which can either be a std error or a stack error.
 ///
@@ -189,7 +192,7 @@ impl<'a> ErrorRef<'a> {
     }
 
     /// Returns the location where this error was created, if available.
-    pub fn location(&self) -> Option<Location> {
+    pub fn location(&self) -> Option<&Location> {
         match self {
             ErrorRef::Std(_) => None,
             ErrorRef::Stack(error) => error.location(),
@@ -213,9 +216,9 @@ impl<'a> fmt::Display for ErrorRef<'a> {
     }
 }
 
-struct Report<'a, E>(&'a E);
+struct Report<'a>(&'a dyn StackError);
 
-impl<'a, E: StackError> fmt::Display for Report<'a, E> {
+impl<'a> fmt::Display for Report<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         self.0.fmt_full(f)
     }

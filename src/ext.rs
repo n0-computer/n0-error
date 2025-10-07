@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{AnyError, StackError, add_location};
+use crate::{AnyError, StackErrorExt, add_location};
 
 #[macro_export]
 macro_rules! whatever {
@@ -10,6 +10,7 @@ macro_rules! whatever {
         });
     };
     ($source:expr, $fmt:literal$(, $($arg:expr),* $(,)?)*) => {
+        use crate::StackErrorExt;
         match $source {
             core::result::Result::Ok(v) => v,
             core::result::Result::Err(e) => {
@@ -28,6 +29,7 @@ macro_rules! whatever {
 macro_rules! format_err {
     ($fmt:literal$(, $($arg:expr),* $(,)?)?) => {
         {
+            use crate::StackErrorExt;
             $crate::FromString::without_source(
                 format!($fmt$(, $($arg),*)*),
             ).into_any()
@@ -87,7 +89,7 @@ where
     fn context(self, context: impl fmt::Display) -> Result<T, AnyError> {
         match self {
             Ok(v) => Ok(v),
-            Err(err) => Err(AnyError::std(err).context(context)),
+            Err(err) => Err(AnyError::from_std(err).context(context)),
         }
     }
 
@@ -95,7 +97,7 @@ where
     fn e(self) -> Result<T, AnyError> {
         match self {
             Ok(v) => Ok(v),
-            Err(err) => Err(AnyError::std(err)),
+            Err(err) => Err(AnyError::from_std(err)),
         }
     }
 
@@ -106,7 +108,7 @@ where
     {
         match self {
             Ok(v) => Ok(v),
-            Err(err) => Err(AnyError::std(err).context(context())),
+            Err(err) => Err(AnyError::from_std(err).context(context())),
         }
     }
 }

@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 n0-error-macros = { path = "n0-error-macros" }
 anyhow = { version = "1", optional = true }
+derive_more = { version = "2.0.1", features = ["debug", "display"] }
 
 [dev-dependencies]
 anyhow = "1"

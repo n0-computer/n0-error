@@ -3,7 +3,7 @@ use std::{
     ops::Deref,
 };
 
-use crate::{ErrorRef, FromString, Location, SourceFormat, StackError};
+use crate::{ErrorRef, FromString, Location, SourceFormat, StackError, StackErrorExt};
 
 pub enum AnyError {
     Stack(Box<dyn StackError>),
@@ -12,12 +12,12 @@ pub enum AnyError {
 
 impl AnyError {
     #[track_caller]
-    pub fn std(err: impl std::error::Error + Send + Sync + 'static) -> Self {
+    pub fn from_std(err: impl std::error::Error + Send + Sync + 'static) -> Self {
         Self::Std(Box::new(err))
     }
 
     #[track_caller]
-    pub fn stack(err: impl StackError + 'static) -> Self {
+    pub fn from_stack(err: impl StackError + 'static) -> Self {
         Self::Stack(Box::new(err))
     }
 
@@ -31,6 +31,10 @@ impl AnyError {
             AnyError::Stack(error) => ErrorRef::Stack(error.deref()),
             AnyError::Std(error) => ErrorRef::Std(error.deref()),
         }
+    }
+
+    pub fn into_boxed_dyn_error(self) -> Box<dyn std::error::Error + Send + Sync + 'static> {
+        Box::new(StdWrapper(self))
     }
 }
 
@@ -73,8 +77,11 @@ impl StackError for AnyError {
         }
     }
 
-    fn location(&self) -> Option<Location> {
-        self.as_source().location()
+    fn location(&self) -> Option<&Location> {
+        match self {
+            AnyError::Stack(error) => error.location(),
+            AnyError::Std(_) => None,
+        }
     }
 
     fn source(&self) -> Option<ErrorRef<'_>> {
@@ -86,6 +93,15 @@ impl StackError for AnyError {
             AnyError::Stack(error) => error.is_transparent(),
             AnyError::Std(_error) => false,
         }
+    }
+}
+
+#[derive(derive_more::Debug, derive_more::Display)]
+struct StdWrapper(AnyError);
+
+impl std::error::Error for StdWrapper {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.0.as_std().source()
     }
 }
 

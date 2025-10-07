@@ -1,4 +1,4 @@
-use n0_error::{Error, Result, ResultExt, StackError, add_location, ensure, format_err};
+use crate::{Error, Result, ResultExt, StackErrorExt, add_location, ensure, format_err};
 
 use self::util::wait_sequential;
 
@@ -211,7 +211,7 @@ Caused by:
         &fmt,
         r#"read error (at src/tests.rs:196:34)
 Caused by:
-    0: failed to read foo.txt  (at src/tests.rs:195:39)
+    0: failed to read foo.txt (at src/tests.rs:195:39)
     1: file not found"#
     );
     let fmt = format!("{err:#?}");
@@ -303,6 +303,6 @@ fn test_structs_location() {
         format!("{err2:?}"),
         r#"bad (at src/tests.rs:299:20)
 Caused by:
-    0: fail (22)  (at src/tests.rs:286:13)"#
+    0: fail (22) (at src/tests.rs:286:13)"#
     );
 }

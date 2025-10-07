@@ -235,7 +235,7 @@ fn generate_enum_impls(
         let v_ident = &vi.ident;
         if vi.location().is_some() {
             let suffix = (vi.fields().len() > 1).then(|| quote!(, ..));
-            quote! { Self::#v_ident { location #suffix } => *location }
+            quote! { Self::#v_ident { location #suffix } => location.as_ref() }
         } else {
             let inner = (!vi.fields().is_empty()).then(|| quote!(..));
             quote! { Self::#v_ident { #inner } => None }
@@ -342,7 +342,7 @@ fn generate_enum_impls(
                 self
             }
 
-            fn location(&self) -> Option<::n0_error::Location> {
+            fn location(&self) -> Option<&::n0_error::Location> {
                 match self {
                     #( #match_location_arms, )*
                 }
@@ -361,7 +361,7 @@ fn generate_enum_impls(
 
         impl ::std::fmt::Display for #enum_ident #generics {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                use ::n0_error::{SourceFormat, StackError};
+                use ::n0_error::{SourceFormat, StackError, StackErrorExt};
                 match self {
                     #( #match_fmt_message_arms, )*
                 }?;
@@ -374,6 +374,7 @@ fn generate_enum_impls(
 
         impl ::std::fmt::Debug for #enum_ident #generics {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                use ::n0_error::StackErrorExt;
                 if f.alternate() {
                     match self {
                         #(#match_debug_arms)*
@@ -431,7 +432,7 @@ fn generate_struct_impl(
         }
     };
     let get_location = if info.location().is_some() {
-        quote!(self.location)
+        quote!(self.location.as_ref())
     } else {
         quote! { None }
     };
@@ -519,7 +520,7 @@ fn generate_struct_impl(
                 self
             }
 
-            fn location(&self) -> Option<::n0_error::Location> {
+            fn location(&self) -> Option<&::n0_error::Location> {
                 #get_location
             }
             fn source(&self) -> Option<::n0_error::ErrorRef<'_>> {

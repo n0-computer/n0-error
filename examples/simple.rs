@@ -1,6 +1,6 @@
 use std::io;
 
-use n0_error::StackError;
+use n0_error::{StackError, StackErrorExt};
 
 use self::error::CopyError;
 use crate::error::{InvalidArgsError, OperationError};
