@@ -44,30 +44,37 @@ macro_rules! ensure {
     };
 }
 
+/// Error returned when converting [`Option`]s to an error.
 #[add_location]
 #[derive(crate::Error)]
 #[display("Expected some, found none")]
-pub struct NoneError {}
+pub(crate) struct NoneError {}
 
+/// A simple string error, providing a message and optionally a source.
 #[add_location]
 #[derive(crate::Error)]
-pub enum FromString {
+pub(crate) enum FromString {
     #[display("{message}")]
     WithSource { message: String, source: AnyError },
     #[display("{message}")]
     WithoutSource { message: String },
 }
 
+/// Extension methods for results to provide additional context to errors.
 pub trait ResultExt<T> {
+    /// Wraps the result's error value with additional context.
     #[track_caller]
     fn context(self, context: impl fmt::Display) -> Result<T, AnyError>;
 
+    /// Wraps the result's error value with lazily-evaluated additional context.
+    ///
+    /// The `context` closure is only invoked if an error occurs.
     #[track_caller]
     fn with_context<F>(self, context: F) -> Result<T, AnyError>
     where
         F: FnOnce() -> String;
 
-    /// Quickly convert a std error into a `Error`, without having to write a `context` message.
+    /// Quickly convert a std error into [`AnyError`] without a `context` message.
     #[track_caller]
     fn e(self) -> Result<T, AnyError>;
 }

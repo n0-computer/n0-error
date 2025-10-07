@@ -3,7 +3,7 @@ use std::{
     ops::Deref,
 };
 
-use crate::{ErrorSource, FromString, Location, SourceFormat, StackError};
+use crate::{ErrorRef, FromString, Location, SourceFormat, StackError};
 
 pub enum AnyError {
     Stack(Box<dyn StackError>),
@@ -26,10 +26,10 @@ impl AnyError {
         FromString::with_source(context.to_string(), self).into_any()
     }
 
-    pub fn as_source<'a>(&'a self) -> ErrorSource<'a> {
+    pub fn as_source<'a>(&'a self) -> ErrorRef<'a> {
         match self {
-            AnyError::Stack(error) => ErrorSource::Stack(error.deref()),
-            AnyError::Std(error) => ErrorSource::Std(error.deref()),
+            AnyError::Stack(error) => ErrorRef::Stack(error.deref()),
+            AnyError::Std(error) => ErrorRef::Std(error.deref()),
         }
     }
 }
@@ -77,15 +77,15 @@ impl StackError for AnyError {
         self.as_source().location()
     }
 
-    fn source(&self) -> Option<ErrorSource<'_>> {
+    fn source(&self) -> Option<ErrorRef<'_>> {
         self.as_source().next_source()
     }
 
-    fn as_source(&self) -> ErrorSource<'_>
-    where
-        Self: Sized,
-    {
-        ErrorSource::Stack(self)
+    fn is_transparent(&self) -> bool {
+        match self {
+            AnyError::Stack(error) => error.is_transparent(),
+            AnyError::Std(_error) => false,
+        }
     }
 }
 

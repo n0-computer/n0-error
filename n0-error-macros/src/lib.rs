@@ -245,8 +245,8 @@ fn generate_enum_impls(
     let match_source_arms = variants.iter().map(|vi| {
         let v_ident = &vi.ident;
         match vi.source {
-            SourceKind::Stack => quote! { Self::#v_ident { source, .. } => Some(::n0_error::ErrorSource::Stack(source)), },
-            SourceKind::Std => quote! { Self::#v_ident { source, .. } => Some(::n0_error::ErrorSource::Std(source)), },
+            SourceKind::Stack => quote! { Self::#v_ident { source, .. } => Some(::n0_error::ErrorRef::Stack(source)), },
+            SourceKind::Std => quote! { Self::#v_ident { source, .. } => Some(::n0_error::ErrorRef::Std(source)), },
             SourceKind::None => quote! { Self::#v_ident { .. } => None, }
         }
     });
@@ -347,7 +347,7 @@ fn generate_enum_impls(
                     #( #match_location_arms, )*
                 }
             }
-            fn source(&self) -> Option<::n0_error::ErrorSource<'_>> {
+            fn source(&self) -> Option<::n0_error::ErrorRef<'_>> {
                 match self {
                     #( #match_source_arms )*
                 }
@@ -437,8 +437,8 @@ fn generate_struct_impl(
     };
 
     let get_error_source = match info.source {
-        SourceKind::Stack => quote! { Some(::n0_error::ErrorSource::Stack(&self.source)) },
-        SourceKind::Std => quote! { Some(::n0_error::ErrorSource::Std(&self.source)) },
+        SourceKind::Stack => quote! { Some(::n0_error::ErrorRef::Stack(&self.source)) },
+        SourceKind::Std => quote! { Some(::n0_error::ErrorRef::Std(&self.source)) },
         SourceKind::None => quote! { None },
     };
 
@@ -522,7 +522,7 @@ fn generate_struct_impl(
             fn location(&self) -> Option<::n0_error::Location> {
                 #get_location
             }
-            fn source(&self) -> Option<::n0_error::ErrorSource<'_>> {
+            fn source(&self) -> Option<::n0_error::ErrorRef<'_>> {
                 #get_error_source
             }
             fn is_transparent(&self) -> bool {
