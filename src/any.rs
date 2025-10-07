@@ -45,7 +45,7 @@ impl fmt::Display for AnyError {
             AnyError::Std(error) => write!(f, "{error}")?,
         }
         if f.alternate() {
-            self.fmt_sources(f, SourceFormat::OneLine)?;
+            self.report().fmt_sources(f, SourceFormat::OneLine)?;
         }
         Ok(())
     }
@@ -63,14 +63,14 @@ impl fmt::Debug for AnyError {
                 }
             }
         } else {
-            self.fmt_full(f)
+            self.report().full().format(f)
         }
     }
 }
 
 // TODO: Maybe remove this impl
 impl StackError for AnyError {
-    fn as_std(&self) -> &(dyn ::std::error::Error + 'static) {
+    fn as_std(&self) -> &(dyn std::error::Error + Send + 'static) {
         match self {
             AnyError::Stack(error) => error.as_std(),
             AnyError::Std(error) => error.deref(),
@@ -85,7 +85,7 @@ impl StackError for AnyError {
     }
 
     fn source(&self) -> Option<ErrorRef<'_>> {
-        self.as_source().next_source()
+        self.as_source().source()
     }
 
     fn is_transparent(&self) -> bool {

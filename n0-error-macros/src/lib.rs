@@ -338,7 +338,7 @@ fn generate_enum_impls(
         }
 
         impl ::n0_error::StackError for #enum_ident #generics {
-            fn as_std(&self) -> &(dyn ::std::error::Error + 'static) {
+            fn as_std(&self) -> &(dyn ::std::error::Error + ::std::marker::Send + 'static) {
                 self
             }
 
@@ -366,7 +366,7 @@ fn generate_enum_impls(
                     #( #match_fmt_message_arms, )*
                 }?;
                 if f.alternate() {
-                    self.fmt_sources(f, SourceFormat::OneLine)?;
+                    self.report().fmt_sources(f, SourceFormat::OneLine)?;
                 }
                 Ok(())
             }
@@ -381,7 +381,7 @@ fn generate_enum_impls(
                     }
                 } else {
                     use ::n0_error::{StackError};
-                    self.fmt_full(f)?;
+                    self.report().full().format(f)?;
                 }
                 Ok(())
             }
@@ -516,7 +516,7 @@ fn generate_struct_impl(
         }
 
         impl ::n0_error::StackError for #item_ident #generics {
-            fn as_std(&self) -> &(dyn ::std::error::Error + 'static) {
+            fn as_std(&self) -> &(dyn ::std::error::Error + ::std::marker::Send + 'static) {
                 self
             }
 
@@ -536,7 +536,7 @@ fn generate_struct_impl(
                 use ::n0_error::{SourceFormat, StackError};
                 #get_display?;
                 if f.alternate() {
-                    self.fmt_sources(f, SourceFormat::OneLine)?;
+                    self.report().fmt_sources(f, SourceFormat::OneLine)?;
                 }
                 Ok(())
             }
@@ -548,7 +548,7 @@ fn generate_struct_impl(
                     #get_debug
                 } else {
                     use ::n0_error::{StackError};
-                    self.fmt_full(f)?;
+                    self.report().full().format(f)?;
                 }
                 Ok(())
             }
