@@ -54,7 +54,7 @@ fn print(err: impl StackError) {
     println!("{err:#?}");
 }
 
-mod error {
+pub mod error {
     use std::io;
 
     #[n0_error::add_location]

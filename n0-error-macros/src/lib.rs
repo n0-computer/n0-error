@@ -7,7 +7,12 @@ use syn::{
 };
 
 /// Attribute macro that adds a `location: Option<::n0_error::Location>`
-/// field to all named-field variants of an enum. Does nothing else.
+/// field to a struct or to all named-field variants of an enum. Does nothing else.
+///
+/// If the struct or an enum variant is currently a unit kind, it will be converted
+/// to a named-field kind.
+///
+/// Tuple structs or variants are not supported.
 #[proc_macro_attribute]
 pub fn add_location(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut input = parse_macro_input!(item as syn::Item);
@@ -57,17 +62,11 @@ fn add_location_field(fields: &mut Fields) -> Result<(), TokenStream> {
     }
 }
 
-fn err(ident: impl ToTokens, err: impl ToString) -> proc_macro2::TokenStream {
-    syn::Error::new_spanned(ident, err.to_string())
-        .to_compile_error()
-        .to_token_stream()
-}
-
 /// Derive macro that implements StackError, Display, Debug, std::error::Error,
 /// generates constructors, and `From<T>` impls for fields marked with `#[from]`.
 ///
 /// Recognized attributes:
-/// - on variants: `#[display("...")]`, `#[transparent]`
+/// - on variants / the struct item: `#[display("...")]`, `#[transparent]`
 /// - on fields: `#[from]`, `#[std]` (mark std::error::Error source)
 #[proc_macro_derive(Error, attributes(display, transparent, from, std))]
 pub fn derive_error(input: TokenStream) -> TokenStream {
@@ -82,17 +81,17 @@ pub fn derive_error(input: TokenStream) -> TokenStream {
                 .map(|v| VariantInfo::parse(&v.ident, &v.fields, &v.attrs))
                 .collect();
             match infos {
-                Ok(variants) => generate_enum_impls(item_ident, generics, variants),
+                Ok(infos) => generate_enum_impls(item_ident, generics, infos),
                 Err(err) => err,
             }
         }
         syn::Data::Struct(item) => {
             match VariantInfo::parse(&item_ident, &item.fields, &input.attrs) {
-                Err(err) => err,
                 Ok(info) => generate_struct_impl(item_ident, generics, info),
+                Err(err) => err,
             }
         }
-        _ => err(&input, "#[derive(Error)] only supports enums"),
+        _ => err(&input, "#[derive(Error)] only supports enums or structs"),
     }
     .into()
 }
@@ -149,10 +148,7 @@ impl<'a> VariantInfo<'a> {
         let fields: Vec<&Field> = match fields {
             Fields::Named(ref fields) => fields.named.iter().collect(),
             Fields::Unit => vec![],
-            Fields::Unnamed(ref fields) => fields.unnamed.iter().collect(), // _ => return Err(err(
-                                                                            //     ident,
-                                                                            //     "#[derive(Error)] is only supported on structs or enums with only named-field variants",
-                                                                            // )),
+            Fields::Unnamed(ref fields) => fields.unnamed.iter().collect(),
         };
 
         // get source field (by name `source` if present)
@@ -224,8 +220,10 @@ fn generate_enum_impls(
             .location()
             .map(|_| quote!(location: ::n0_error::location()));
         let comma = (location.is_some() && vi.fields().len() > 1).then(|| quote!(,));
+        let doc = format!("Creates a new [`Self::{}`] error.", v_ident);
         quote! {
             #[track_caller]
+            #[doc = #doc]
             pub fn #fn_ident(#(#params),*) -> Self {
                 Self::#v_ident { #(#names),* #comma #location }
             }
@@ -423,7 +421,9 @@ fn generate_struct_impl(
             .location()
             .map(|_| quote!(location: ::n0_error::location()));
         let comma = (location.is_some() && info.fields().len() > 1).then(|| quote!(,));
+        let doc = format!("Creates a new [`{}`] error.", item_ident);
         quote! {
+            #[doc = #doc]
             #[track_caller]
             pub fn new(#(#params),*) -> Self {
                 Self { #(#names),* #comma #location }
@@ -510,7 +510,6 @@ fn generate_struct_impl(
     };
 
     quote! {
-
         impl #impl_generics #item_ident #ty_generics #where_clause {
             #constructor
         }
@@ -611,4 +610,10 @@ fn get_doc_or_display(attrs: &[Attribute]) -> Option<proc_macro2::TokenStream> {
             Some(quote! { write!(f, #doc) })
         }
     }
+}
+
+fn err(ident: impl ToTokens, err: impl ToString) -> proc_macro2::TokenStream {
+    syn::Error::new_spanned(ident, err.to_string())
+        .to_compile_error()
+        .to_token_stream()
 }
