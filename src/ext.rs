@@ -46,10 +46,8 @@ macro_rules! ensure {
 
 #[add_location]
 #[derive(crate::Error)]
-pub enum NoneError {
-    #[display("Expected some, found none")]
-    None {},
-}
+#[display("Expected some, found none")]
+pub struct NoneError {}
 
 #[add_location]
 #[derive(crate::Error)]
@@ -112,7 +110,7 @@ impl<T> ResultExt<T> for Option<T> {
     fn context(self, context: impl fmt::Display) -> Result<T, AnyError> {
         match self {
             Some(v) => Ok(v),
-            None => Err(NoneError::none().into_any().context(context)),
+            None => Err(NoneError::new().context(context)),
         }
     }
 
@@ -120,7 +118,7 @@ impl<T> ResultExt<T> for Option<T> {
     fn e(self) -> Result<T, AnyError> {
         match self {
             Some(v) => Ok(v),
-            None => Err(NoneError::none().into_any()),
+            None => Err(NoneError::new().into_any()),
         }
     }
 
@@ -132,7 +130,7 @@ impl<T> ResultExt<T> for Option<T> {
         let context = context();
         match self {
             Some(v) => Ok(v),
-            None => Err(NoneError::none().into_any().context(context)),
+            None => Err(NoneError::new().context(context)),
         }
     }
 }
