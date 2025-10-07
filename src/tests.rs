@@ -1,6 +1,6 @@
 use n0_error::{Error, Result, ResultExt, StackError, add_location, ensure, format_err};
 
-use crate::util::wait_sequential;
+use self::util::wait_sequential;
 
 mod util;
 
@@ -77,12 +77,12 @@ fn test_whatever() {
     assert_eq!(format!("{:#}", fail_my_error().unwrap_err()), "A failure");
     assert_eq!(
         format!("{:?}", fail_my_error().unwrap_err()),
-        format!("A failure (at tests/basic.rs:34:13)")
+        format!("A failure (at src/tests.rs:34:13)")
     );
     let expected = r#"A {
     location: Some(
         Location {
-            file: "tests/basic.rs",
+            file: "src/tests.rs",
             line: 34,
             column: 13,
         },
@@ -209,9 +209,9 @@ Caused by:
     println!("debug :\n{fmt}\n");
     assert_eq!(
         &fmt,
-        r#"read error (at tests/basic.rs:196:34)
+        r#"read error (at src/tests.rs:196:34)
 Caused by:
-    0: failed to read foo.txt  (at tests/basic.rs:195:39)
+    0: failed to read foo.txt  (at src/tests.rs:195:39)
     1: file not found"#
     );
     let fmt = format!("{err:#?}");
@@ -289,10 +289,7 @@ fn test_structs_location() {
     let res = fail_some_error();
     let err = res.unwrap_err();
     assert_eq!(format!("{err}"), "SomeErrorLoc");
-    assert_eq!(
-        format!("{err:?}"),
-        "SomeErrorLoc (at tests/basic.rs:282:13)"
-    );
+    assert_eq!(format!("{err:?}"), "SomeErrorLoc (at src/tests.rs:282:13)");
     let err2 = err.context("bad");
     assert_eq!(format!("{err2:#}"), "bad: SomeErrorLoc");
 
@@ -304,8 +301,8 @@ fn test_structs_location() {
     println!("{err2:?}");
     assert_eq!(
         format!("{err2:?}"),
-        r#"bad (at tests/basic.rs:302:20)
+        r#"bad (at src/tests.rs:299:20)
 Caused by:
-    0: fail (22)  (at tests/basic.rs:286:13)"#
+    0: fail (22)  (at src/tests.rs:286:13)"#
     );
 }

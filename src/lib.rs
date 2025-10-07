@@ -6,11 +6,10 @@ mod any;
 mod error;
 mod ext;
 mod location;
+#[cfg(test)]
+mod tests;
 
-pub use self::any::*;
-pub use self::error::*;
-pub use self::ext::*;
-pub use self::location::*;
+pub use self::{any::*, error::*, ext::*, location::*};
 
 pub type Result<T = (), E = AnyError> = std::result::Result<T, E>;
 

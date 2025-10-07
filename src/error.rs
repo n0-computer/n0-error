@@ -53,7 +53,7 @@ pub trait StackError: std::fmt::Display + std::fmt::Debug + Send + Sync {
         false
     }
 
-    fn report<'a>(&'a self) -> impl fmt::Display
+    fn report(&self) -> impl fmt::Display
     where
         Self: Sized,
     {
@@ -137,7 +137,7 @@ pub trait StackError: std::fmt::Display + std::fmt::Debug + Send + Sync {
                         item.fmt_location(f)?;
                     }
                     if chain.peek().is_some() {
-                        write!(f, "\n")?;
+                        writeln!(f)?;
                     }
                 }
             }
