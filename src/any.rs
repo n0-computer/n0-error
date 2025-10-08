@@ -7,14 +7,14 @@ use crate::{
     ErrorRef, FromString, Location, SourceFormat, StackError, StackErrorExt, StdErr, location,
 };
 
-pub struct StdWrapper {
-    inner: Box<dyn StdErr>,
+pub(crate) struct StdWrapper {
+    inner: Box<dyn std::error::Error + Send + Sync + 'static>,
     location: Option<Location>,
 }
 
 impl fmt::Display for StdWrapper {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.inner);
+        write!(f, "{}", self.inner)?;
         if f.alternate() {
             self.report().fmt_sources(f, SourceFormat::OneLine)?;
         }
@@ -55,14 +55,23 @@ impl<'a> StdWrapperRef<'a> {
     pub fn source(self) -> Option<ErrorRef<'a>> {
         self.inner.source().map(|s| ErrorRef::Std(Self::new(s)))
     }
+    pub fn location(&self) -> Option<&Location> {
+        self.location
+    }
 }
 
 impl StdWrapper {
     #[track_caller]
-    pub fn new(inner: Box<dyn StdErr>) -> StdWrapper {
+    fn new(inner: Box<dyn std::error::Error + Send + Sync + 'static>) -> StdWrapper {
         StdWrapper {
             inner,
             location: location(),
+        }
+    }
+    fn new_untracked(inner: Box<dyn StdErr + Send + Sync + 'static>) -> StdWrapper {
+        Self {
+            inner,
+            location: None,
         }
     }
     fn as_ref(&self) -> StdWrapperRef<'_> {
@@ -74,7 +83,7 @@ impl StdWrapper {
 }
 
 impl StackError for StdWrapper {
-    fn as_std(&self) -> &(dyn StdErr) {
+    fn as_std(&self) -> &(dyn StdErr + Send + Sync + 'static) {
         self.inner.as_ref()
     }
 
@@ -95,7 +104,9 @@ impl StackError for StdWrapper {
     }
 }
 
-pub enum AnyError {
+pub struct AnyError(Inner);
+
+enum Inner {
     Stack(Box<dyn StackError>),
     Std(StdWrapper),
 }
@@ -103,26 +114,46 @@ pub enum AnyError {
 impl AnyError {
     #[track_caller]
     pub fn from_std(err: impl std::error::Error + Send + Sync + 'static) -> Self {
-        Self::Std(StdWrapper::new(Box::new(err)))
+        Self::from_std_box(Box::new(err))
+    }
+
+    #[cfg(feature = "anyhow")]
+    pub fn from_anyhow(err: anyhow::Error) -> Self {
+        Self::from_std_box(err.into_boxed_dyn_error())
+    }
+
+    #[track_caller]
+    pub(crate) fn from_std_untracked(err: impl std::error::Error + Send + Sync + 'static) -> Self {
+        Self(Inner::Std(StdWrapper::new_untracked(Box::new(err))))
+    }
+
+    #[track_caller]
+    pub fn from_std_box(err: Box<dyn std::error::Error + Send + Sync + 'static>) -> Self {
+        Self(Inner::Std(StdWrapper::new(err)))
+    }
+
+    #[track_caller]
+    pub fn from_str(s: impl fmt::Display) -> Self {
+        FromString::without_source(s.to_string()).into_any()
     }
 
     fn inner(&self) -> &dyn StackError {
-        match self {
-            AnyError::Stack(err) => err.deref(),
-            AnyError::Std(err) => err,
+        match &self.0 {
+            Inner::Stack(err) => err.deref(),
+            Inner::Std(err) => err,
         }
     }
 
     fn inner_mut(&mut self) -> &mut dyn StackError {
-        match self {
-            AnyError::Stack(err) => err.as_mut(),
-            AnyError::Std(err) => err,
+        match &mut self.0 {
+            Inner::Stack(err) => err.as_mut(),
+            Inner::Std(err) => err,
         }
     }
 
     #[track_caller]
     pub fn from_stack(err: impl StackError + 'static) -> Self {
-        Self::Stack(Box::new(err))
+        Self(Inner::Stack(Box::new(err)))
     }
 
     #[track_caller]
@@ -130,10 +161,10 @@ impl AnyError {
         FromString::with_source(context.to_string(), self).into_any()
     }
 
-    pub fn as_source<'a>(&'a self) -> ErrorRef<'a> {
-        match self {
-            AnyError::Stack(error) => ErrorRef::Stack(error.deref()),
-            AnyError::Std(error) => ErrorRef::Std(error.as_ref()),
+    pub fn as_ref<'a>(&'a self) -> ErrorRef<'a> {
+        match &self.0 {
+            Inner::Stack(error) => ErrorRef::Stack(error.deref()),
+            Inner::Std(error) => ErrorRef::Std(error.as_ref()),
         }
     }
 
@@ -144,10 +175,7 @@ impl AnyError {
 
 impl fmt::Display for AnyError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            AnyError::Stack(error) => write!(f, "{error}")?,
-            AnyError::Std(error) => write!(f, "{error}")?,
-        }
+        write!(f, "{}", self.inner())?;
         if f.alternate() {
             self.report().fmt_sources(f, SourceFormat::OneLine)?;
         }
@@ -158,11 +186,11 @@ impl fmt::Display for AnyError {
 impl fmt::Debug for AnyError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if f.alternate() {
-            match self {
-                AnyError::Stack(error) => {
+            match &self.0 {
+                Inner::Stack(error) => {
                     write!(f, "Stack({error:#?})")
                 }
-                AnyError::Std(error) => {
+                Inner::Std(error) => {
                     write!(f, "Std({error:#?})")
                 }
             }
@@ -174,7 +202,7 @@ impl fmt::Debug for AnyError {
 
 // TODO: Maybe remove this impl
 impl StackError for AnyError {
-    fn as_std(&self) -> &(dyn StdErr) {
+    fn as_std(&self) -> &(dyn StdErr + Send + Sync + 'static) {
         self.inner().as_std()
     }
 
@@ -225,10 +253,10 @@ impl std::error::Error for AnyErrorAsStd {
 
 impl<E> From<E> for AnyError
 where
-    E: StdErr,
+    E: StdErr + Send + Sync + 'static,
 {
     fn from(value: E) -> Self {
-        Self::Std(StdWrapper::new(Box::new(value)))
+        Self::from_std(value)
     }
 }
 

@@ -349,7 +349,7 @@ fn generate_enum_impls(
         }
 
         impl ::n0_error::StackError for #enum_ident #generics {
-            fn as_std(&self) -> &(dyn ::n0_error::StdErr) {
+            fn as_std(&self) -> &(dyn ::std::error::Error + ::std::marker::Send + ::std::marker::Sync + 'static) {
                 self
             }
 
@@ -539,7 +539,7 @@ fn generate_struct_impl(
         }
 
         impl ::n0_error::StackError for #item_ident #generics {
-            fn as_std(&self) -> &(dyn ::n0_error::StdErr) {
+            fn as_std(&self) -> &(dyn ::std::error::Error + ::std::marker::Send + ::std::marker::Sync + 'static) {
                 self
             }
 

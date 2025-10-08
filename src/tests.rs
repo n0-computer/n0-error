@@ -1,10 +1,8 @@
-use std::io;
-
 use self::util::wait_sequential;
 use crate::{
     AnyError, Error, Result, ResultExt, StackErrorExt, add_location, anyerr, ensure, format_err,
 };
-
+use std::io;
 mod util;
 
 #[test]
@@ -12,13 +10,7 @@ fn test_anyhow_compat() -> Result {
     fn ok() -> anyhow::Result<()> {
         Ok(())
     }
-
-    // let res = ok();
-    // let res = res.map_err(|err| err.into_boxed_dyn_error());
-    // res?;
-    // res.e()?;
-    // ok().map_err(anyhow::Error::into_boxed_dyn_error)?;
-
+    ok().map_err(AnyError::from_anyhow)?;
     Ok(())
 }
 

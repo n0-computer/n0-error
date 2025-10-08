@@ -8,7 +8,7 @@ pub enum SourceFormat {
 }
 
 pub trait StackError: fmt::Display + fmt::Debug + Send + Sync + 'static {
-    fn as_std(&self) -> &(dyn StdErr);
+    fn as_std(&self) -> &(dyn StdErr + Send + Sync + 'static);
     fn location(&self) -> Option<&Location>;
     fn set_location(&mut self, location: Location);
     fn source(&self) -> Option<ErrorRef<'_>>;
@@ -36,7 +36,7 @@ impl dyn StackError {
 pub trait StackErrorExt: StackError + Sized {
     #[track_caller]
     fn into_any(self) -> AnyError {
-        AnyError::Stack(Box::new(self))
+        AnyError::from_stack(self)
     }
 
     #[track_caller]
@@ -102,16 +102,13 @@ impl<'a> ErrorRef<'a> {
     /// Returns the location where this error was created, if available.
     pub fn location(&self) -> Option<&Location> {
         match self {
-            ErrorRef::Std(_) => None,
+            ErrorRef::Std(error) => error.location(),
             ErrorRef::Stack(error) => error.location(),
         }
     }
 
     pub fn fmt_location(&self, f: &mut Formatter) -> fmt::Result {
-        match &self {
-            ErrorRef::Std(_) => Ok(()),
-            ErrorRef::Stack(error) => error.report().fmt_location(f),
-        }
+        fmt_location(self.location(), f)
     }
 }
 
@@ -170,10 +167,7 @@ impl<'a> Report<'a> {
 
     /// Formats only the location.
     pub fn fmt_location(&self, f: &mut Formatter) -> fmt::Result {
-        if let Some(location) = self.inner.location() {
-            write!(f, " (at {})", location)?;
-        }
-        Ok(())
+        fmt_location(self.inner.location(), f)
     }
 
     /// Formats only the sources.
@@ -243,4 +237,11 @@ impl<'a> Iterator for Chain<'a> {
             }
         }
     }
+}
+
+fn fmt_location(location: Option<&Location>, f: &mut Formatter) -> fmt::Result {
+    if let Some(location) = location {
+        write!(f, " (at {})", location)?;
+    }
+    Ok(())
 }
