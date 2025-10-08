@@ -1,6 +1,6 @@
 use std::fmt::{self, Formatter};
 
-use crate::{AnyError, Location, backtrace_enabled};
+use crate::{AnyError, Location, StdErr, StdWrapperRef, backtrace_enabled};
 #[derive(Debug, Copy, Clone)]
 pub enum SourceFormat {
     OneLine,
@@ -8,8 +8,9 @@ pub enum SourceFormat {
 }
 
 pub trait StackError: fmt::Display + fmt::Debug + Send + Sync + 'static {
-    fn as_std(&self) -> &(dyn ::std::error::Error + Send + 'static);
+    fn as_std(&self) -> &(dyn StdErr);
     fn location(&self) -> Option<&Location>;
+    fn set_location(&mut self, location: Location);
     fn source(&self) -> Option<ErrorRef<'_>>;
     fn is_transparent(&self) -> bool;
 }
@@ -68,7 +69,7 @@ impl<T: StackError + Sized> StackErrorExt for T {}
 #[derive(Copy, Clone, Debug)]
 pub enum ErrorRef<'a> {
     /// Std error (no location info)
-    Std(&'a (dyn std::error::Error + 'static)),
+    Std(StdWrapperRef<'a>),
     /// StackError (has location info)
     Stack(&'a dyn StackError),
 }
@@ -85,7 +86,7 @@ impl<'a> ErrorRef<'a> {
     /// Returns the error as a std error.
     pub fn as_std(&self) -> &dyn std::error::Error {
         match self {
-            ErrorRef::Std(error) => error,
+            ErrorRef::Std(error) => error.as_std(),
             ErrorRef::Stack(error) => error.as_std(),
         }
     }
@@ -93,7 +94,7 @@ impl<'a> ErrorRef<'a> {
     /// Returns the next source in the source chain as a [`ErrorSource`].
     pub fn source(self) -> Option<ErrorRef<'a>> {
         match self {
-            Self::Std(error) => std::error::Error::source(error).map(Self::Std),
+            Self::Std(error) => StdWrapperRef::source(error),
             Self::Stack(error) => StackError::source(error),
         }
     }
@@ -117,7 +118,7 @@ impl<'a> ErrorRef<'a> {
 impl<'a> fmt::Display for ErrorRef<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Std(error) => write!(f, "{error}"),
+            Self::Std(error) => write!(f, "{}", error.as_std()),
             Self::Stack(error) => write!(f, "{error}"),
         }
     }

@@ -1,6 +1,6 @@
 use std::io;
 
-use n0_error::{StackError, StackErrorExt};
+use n0_error::{ResultExt, StackError, StackErrorExt};
 
 use self::error::CopyError;
 use crate::error::{InvalidArgsError, OperationError};
@@ -28,7 +28,7 @@ fn operation() -> Result<(), OperationError> {
 }
 
 fn copy() -> Result<(), CopyError> {
-    read().map_err(CopyError::read)?;
+    read().context(CopyError::read)?;
     // let res = read();
     // match res {
     //     Ok(()) => Ok(()),
