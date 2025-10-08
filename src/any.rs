@@ -236,25 +236,6 @@ impl std::error::Error for AnyErrorAsStd {
     }
 }
 
-// #[cfg(feature = "anyhow")]
-// impl From<anyhow::Error> for AnyError {
-//     fn from(value: anyhow::Error) -> Self {
-//         Self::Std(value.into_boxed_dyn_error())
-//     }
-// }
-
-// impl From<&str> for AnyError {
-//     fn from(value: &str) -> Self {
-//         crate::FromString::without_source(value.to_string()).into_any()
-//     }
-// }
-
-// impl From<String> for AnyError {
-//     fn from(value: String) -> Self {
-//         crate::FromString::without_source(value).into_any()
-//     }
-// }
-
 impl<E> From<E> for AnyError
 where
     E: StdErr + Send + Sync + 'static,
@@ -264,9 +245,3 @@ where
         Self::from_std(value)
     }
 }
-
-// impl From<Box<dyn std::error::Error + Send + Sync + 'static>> for AnyError {
-//     fn from(value: Box<dyn std::error::Error + Send + Sync + 'static>) -> Self {
-//         Self::Std(value)
-//     }
-// }

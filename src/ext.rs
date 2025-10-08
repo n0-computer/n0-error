@@ -157,9 +157,7 @@ pub trait ElevateErr<Source, Target: StackError> {
     }
 }
 
-pub use std::error::Error as StdErr;
-// pub trait StdErr: std::error::Error + Send + Sync + 'static {}
-// impl<T> StdErr for T where T: std::error::Error + Send + Sync + 'static {}
+pub(crate) use std::error::Error as StdErr;
 
 impl<E: StdErr + Send + Sync + 'static> ElevateErr<E, AnyError> for &str {
     #[track_caller]
@@ -302,38 +300,3 @@ impl<T> ResultExt<T, AnyError> for Result<T, AnyError> {
         }
     }
 }
-
-// impl<T> ResultExt<T, Box<dyn StdErr + Send + Sync + 'static>> for Result<T, Box<dyn StdErr>> {
-//     #[track_caller]
-//     fn e(self) -> Result<T, AnyError> {
-//         match self {
-//             Ok(v) => Ok(v),
-//             Err(err) => Err(AnyError::from_std_box(err)),
-//         }
-//     }
-
-//     #[track_caller]
-//     fn with_context<F, C, E2>(self, context: F) -> Result<T, E2>
-//     where
-//         F: FnOnce() -> C,
-//         C: ElevateErr<Box<dyn StdErr>, E2>,
-//         E2: StackError,
-//     {
-//         match self {
-//             Ok(v) => Ok(v),
-//             Err(err) => Err(context().elevate_tracked(err)),
-//         }
-//     }
-
-//     #[track_caller]
-//     fn context<C, E2>(self, context: C) -> Result<T, E2>
-//     where
-//         C: ElevateErr<Box<dyn StdErr>, E2>,
-//         E2: StackError,
-//     {
-//         match self {
-//             Ok(v) => Ok(v),
-//             Err(err) => Err(context.elevate_tracked(err)),
-//         }
-//     }
-// }

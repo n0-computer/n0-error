@@ -75,6 +75,14 @@ pub enum ErrorRef<'a> {
 }
 
 impl<'a> ErrorRef<'a> {
+    pub fn std(err: &dyn std::error::Error) -> ErrorRef<'_> {
+        ErrorRef::Std(StdWrapperRef::new(err))
+    }
+
+    pub fn stack(err: &dyn StackError) -> ErrorRef<'_> {
+        ErrorRef::Stack(err)
+    }
+
     /// Returns `true` if this error is transparent (i.e. directly forwards to its source).
     pub fn is_transparent(&self) -> bool {
         match self {
