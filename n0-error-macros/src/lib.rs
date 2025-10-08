@@ -317,8 +317,8 @@ fn generate_enum_impls(
         let comma = (location.is_some() && vi.fields().len() > 1).then(|| quote!(,));
         let doc = format!("Creates a new [`Self::{}`] error.", v_ident);
         quote! {
-            #[track_caller]
             #[doc = #doc]
+            #[track_caller]
             pub fn #fn_ident(#(#params),*) -> Self {
                 Self::#v_ident { #(#names),* #comma #location }
             }
@@ -337,11 +337,22 @@ fn generate_enum_impls(
         }
     });
 
+    let match_set_location_arms = variants.iter().map(|vi| {
+        let v_ident = &vi.ident;
+        if vi.location().is_some() {
+            let suffix = (vi.fields().len() > 1).then(|| quote!(, ..));
+            quote! { Self::#v_ident { location #suffix } => { *location = Some(new_location) }}
+        } else {
+            let inner = (!vi.fields().is_empty()).then(|| quote!(..));
+            quote! { Self::#v_ident { #inner } => {} }
+        }
+    });
+
     let match_source_arms = variants.iter().map(|vi| {
         let v_ident = &vi.ident;
         match (vi.source_ident.as_ref(), &vi.source_kind) {
             (Some(src_ident), SourceKind::Stack) => quote! { Self::#v_ident { #src_ident: source, .. } => Some(::n0_error::ErrorRef::Stack(source)), },
-            (Some(src_ident), SourceKind::Std) => quote! { Self::#v_ident { #src_ident: source, .. } => Some(::n0_error::ErrorRef::Std(source)), },
+            (Some(src_ident), SourceKind::Std) => quote! { Self::#v_ident { #src_ident: source, .. } => Some(::n0_error::ErrorRef::Std(n0_error::StdWrapperRef::new(source))), },
             _ => quote! { Self::#v_ident { .. } => None, }
         }
     });
@@ -437,13 +448,19 @@ fn generate_enum_impls(
         }
 
         impl ::n0_error::StackError for #enum_ident #generics {
-            fn as_std(&self) -> &(dyn ::std::error::Error + ::std::marker::Send + 'static) {
+            fn as_std(&self) -> &(dyn ::std::error::Error + ::std::marker::Send + ::std::marker::Sync + 'static) {
                 self
             }
 
             fn location(&self) -> Option<&::n0_error::Location> {
                 match self {
                     #( #match_location_arms, )*
+                }
+            }
+
+            fn set_location(&mut self, new_location: ::n0_error::Location) {
+                match self {
+                    #( #match_set_location_arms, )*
                 }
             }
             fn source(&self) -> Option<::n0_error::ErrorRef<'_>> {
@@ -494,12 +511,12 @@ fn generate_enum_impls(
             }
         }
 
-        impl #impl_generics ::core::convert::From<#enum_ident> for ::n0_error::AnyError #ty_generics #where_clause {
-            #[track_caller]
-            fn from(source: #enum_ident) -> Self {
-                ::n0_error::AnyError::Stack(::std::boxed::Box::new(source))
-            }
-        }
+        // impl #impl_generics ::core::convert::From<#enum_ident> for ::n0_error::AnyError #ty_generics #where_clause {
+        //     #[track_caller]
+        //     fn from(source: #enum_ident) -> Self {
+        //         ::n0_error::AnyError::Stack(::std::boxed::Box::new(source))
+        //     }
+        // }
 
         #( #from_impls )*
     }
@@ -534,6 +551,12 @@ fn generate_struct_impl(
         quote!(self.location.as_ref())
     } else {
         quote! { None }
+    };
+
+    let set_location = if info.location().is_some() {
+        quote!(self.location = Some(new_location);)
+    } else {
+        quote! {}
     };
 
     let get_error_source = match (info.source_ident.as_ref(), &info.source_kind) {
@@ -627,12 +650,15 @@ fn generate_struct_impl(
         }
 
         impl ::n0_error::StackError for #item_ident #generics {
-            fn as_std(&self) -> &(dyn ::std::error::Error + ::std::marker::Send + 'static) {
+            fn as_std(&self) -> &(dyn ::std::error::Error + ::std::marker::Send + ::std::marker::Sync + 'static) {
                 self
             }
 
             fn location(&self) -> Option<&::n0_error::Location> {
                 #get_location
+            }
+            fn set_location(&mut self, new_location: ::n0_error::Location) {
+                #set_location
             }
             fn source(&self) -> Option<::n0_error::ErrorRef<'_>> {
                 #get_error_source
@@ -671,12 +697,12 @@ fn generate_struct_impl(
             }
         }
 
-        impl #impl_generics ::core::convert::From<#item_ident> for ::n0_error::AnyError #ty_generics #where_clause {
-            #[track_caller]
-            fn from(source: #item_ident) -> Self {
-                ::n0_error::AnyError::Stack(::std::boxed::Box::new(source))
-            }
-        }
+        // impl #impl_generics ::core::convert::From<#item_ident> for ::n0_error::AnyError #ty_generics #where_clause {
+        //     #[track_caller]
+        //     fn from(source: #item_ident) -> Self {
+        //         ::n0_error::AnyError::Stack(::std::boxed::Box::new(source))
+        //     }
+        // }
 
         #get_from
     }

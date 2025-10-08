@@ -1,6 +1,8 @@
 use self::util::wait_sequential;
-use crate::{Error, Result, ResultExt, StackErrorExt, add_location, ensure, format_err};
-
+use crate::{
+    AnyError, Error, Result, ResultExt, StackErrorExt, add_location, anyerr, ensure, format_err,
+};
+use std::io;
 mod util;
 
 #[test]
@@ -8,9 +10,7 @@ fn test_anyhow_compat() -> Result {
     fn ok() -> anyhow::Result<()> {
         Ok(())
     }
-
-    ok()?;
-
+    ok().map_err(AnyError::from_anyhow)?;
     Ok(())
 }
 
@@ -162,7 +162,7 @@ fn test_sources() {
     let err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
     let file_name = "foo.txt";
     let res: Result<(), _> = Err(err).with_context(|| format!("failed to read {file_name}"));
-    let res: Result<(), _> = res.context("read error");
+    let res: Result<(), AnyError> = res.context("read error");
 
     let err = res.err().unwrap();
 
@@ -304,4 +304,52 @@ fn test_structs_location() {
 Caused by:
     0: fail (22) (at src/tests.rs:285:13)"#
     );
+}
+
+#[test]
+fn test_context() {
+    #[add_location]
+    #[derive(n0_error::Error)]
+    enum AppError {
+        My { source: MyError },
+        Baz { source: MyError, count: usize },
+    }
+    // impl AppError {
+    //     fn My() -> fn(MyError) -> Self {
+    //         Self::my
+    //     }
+
+    //     fn Baz(count: usize) -> impl Fn(MyError) -> Self {
+    //         move |source| Self::baz(source, count)
+    //     }
+    // }
+    fn fail_a() -> Result<(), MyError> {
+        Err(MyError::a())
+    }
+    println!("{:?}", fail_a().context("foo").unwrap_err());
+    println!("---");
+    println!("{:?}", fail_a().context(AppError::my).unwrap_err());
+    println!("---");
+    println!(
+        "{:?}",
+        fail_a().context(|err| AppError::baz(err, 32)).unwrap_err()
+    );
+    println!("---");
+    // println!("{:?}", fail_a().context2(AppError::baz).unwrap_err());
+}
+
+#[test]
+fn test_any() {
+    // fn foo() -> Result {
+    //     Err(io::Error::other("foo"))?;
+    //     Ok(())
+    // }
+
+    // let x = foo();
+    let x = anyerr!("foo");
+    println!("{x:?}");
+    let x = anyerr!(MyError::a());
+    println!("{x:?}");
+    let x = anyerr!(io::Error::other("foo"));
+    println!("{x:?}");
 }
