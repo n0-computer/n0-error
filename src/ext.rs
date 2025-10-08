@@ -34,15 +34,38 @@ macro_rules! format_err {
         }
     };
 }
-
 #[macro_export]
 macro_rules! ensure {
-    ($predicate:expr, $($arg:tt),*) => {
+    ($predicate:expr, $err:expr $(,)?) => {
         if !$predicate {
-            return Err($crate::anyerr!($($arg),*))
+            return Err(::core::convert::Into::into($err));
         }
     };
 }
+
+#[macro_export]
+macro_rules! ensure_any {
+    ($cond:expr, $fmt:literal) => {
+        if !$cond{
+            return Err($crate::anyerr!($fmt));
+        }
+    };
+
+    ($cond:expr, $fmt:literal$(, $($arg:expr),* $(,)?)?) => {
+        if !$cond{
+            return Err($crate::anyerr!($fmt, $($arg),*));
+        }
+    };
+
+    ($cond:expr, $err:expr) => {
+        if !$cond{
+            return Err($crate::anyerr!($err));
+        }
+    }
+}
+
+#[doc(hidden)]
+pub use spez as __spez;
 
 #[macro_export]
 macro_rules! anyerr {
@@ -55,7 +78,7 @@ macro_rules! anyerr {
     };
 
     ($err:expr) => {
-        ::spez::spez! {
+        $crate::__spez::spez! {
             for err = $err;
             match $crate::AnyError -> $crate::AnyError {
                 err
@@ -67,7 +90,10 @@ macro_rules! anyerr {
                 $crate::AnyError::from_std(err)
             }
             match <T: ::std::fmt::Display> T -> $crate::AnyError {
-                $crate::FromString::without_source(err.to_string()).into_any()
+                {
+                    use $crate::StackErrorExt;
+                    $crate::FromString::without_source(err.to_string()).into_any()
+                }
             }
         }
     };
@@ -84,7 +110,7 @@ pub(crate) struct NoneError {}
 /// A simple string error, providing a message and optionally a source.
 #[add_location]
 #[derive(crate::Error)]
-pub(crate) enum FromString {
+pub enum FromString {
     #[display("{message}")]
     WithSource { message: String, source: AnyError },
     #[display("{message}")]

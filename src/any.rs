@@ -48,6 +48,7 @@ impl<'a> StdWrapperRef<'a> {
             location: None,
         }
     }
+
     pub fn as_std(&self) -> &(dyn std::error::Error) {
         self.inner
     }
@@ -55,6 +56,7 @@ impl<'a> StdWrapperRef<'a> {
     pub fn source(self) -> Option<ErrorRef<'a>> {
         self.inner.source().map(|s| ErrorRef::Std(Self::new(s)))
     }
+
     pub fn location(&self) -> Option<&Location> {
         self.location
     }
@@ -68,12 +70,14 @@ impl StdWrapper {
             location: location(),
         }
     }
+
     fn new_untracked(inner: Box<dyn StdErr + Send + Sync + 'static>) -> StdWrapper {
         Self {
             inner,
             location: None,
         }
     }
+
     fn as_ref(&self) -> StdWrapperRef<'_> {
         StdWrapperRef {
             inner: self.inner.as_ref(),
@@ -255,6 +259,7 @@ impl<E> From<E> for AnyError
 where
     E: StdErr + Send + Sync + 'static,
 {
+    #[track_caller]
     fn from(value: E) -> Self {
         Self::from_std(value)
     }

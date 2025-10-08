@@ -1,8 +1,9 @@
+use std::io;
+
 use self::util::wait_sequential;
 use crate::{
-    AnyError, Error, Result, ResultExt, StackErrorExt, add_location, anyerr, ensure, format_err,
+    AnyError, Error, Result, ResultExt, StackErrorExt, add_location, anyerr, ensure_any, format_err,
 };
-use std::io;
 mod util;
 
 #[test]
@@ -10,8 +11,7 @@ fn test_anyhow_compat() -> Result {
     fn ok() -> anyhow::Result<()> {
         Ok(())
     }
-    ok().map_err(AnyError::from_anyhow)?;
-    Ok(())
+    ok().map_err(AnyError::from_anyhow)
 }
 
 #[add_location]
@@ -47,7 +47,6 @@ fn test_whatever() {
     assert!(fail().is_err());
     assert_eq!(format!("{:?}", fail().unwrap_err()), "sad face");
     assert_eq!(format!("{}", fail().unwrap_err()), "sad face");
-    //
     assert!(fail_my_error().is_err());
     assert_eq!(format!("{}", fail_my_error().unwrap_err()), "A failure");
     assert_eq!(format!("{:#}", fail_my_error().unwrap_err()), "A failure");
@@ -158,6 +157,7 @@ fn test_option() {
 #[test]
 fn test_sources() {
     let _guard = wait_sequential();
+
     n0_error::set_backtrace_enabled(false);
     let err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
     let file_name = "foo.txt";
@@ -221,7 +221,7 @@ Caused by:
 fn test_ensure() {
     let _guard = wait_sequential();
     fn foo() -> Result {
-        ensure!(false, "sad face");
+        ensure_any!(false, "sad face");
         Ok(())
     }
     let err = foo().unwrap_err();
@@ -240,6 +240,7 @@ struct SomeErrorFields {
 #[test]
 fn test_structs() {
     let _guard = wait_sequential();
+
     n0_error::set_backtrace_enabled(false);
     fn fail_some_error() -> Result<(), SomeError> {
         Err(SomeError)
@@ -275,7 +276,6 @@ struct SomeErrorLocFields {
 
 #[test]
 fn test_structs_location() {
-    let _guard = wait_sequential();
     n0_error::set_backtrace_enabled(true);
     fn fail_some_error() -> Result<(), SomeErrorLoc> {
         Err(SomeErrorLoc::new())
@@ -285,13 +285,13 @@ fn test_structs_location() {
         Err(SomeErrorLocFields::new(22))
     }
 
+    let _guard = wait_sequential();
     let res = fail_some_error();
     let err = res.unwrap_err();
     assert_eq!(format!("{err}"), "SomeErrorLoc");
     assert_eq!(format!("{err:?}"), "SomeErrorLoc (at src/tests.rs:281:13)");
     let err2 = err.context("bad");
     assert_eq!(format!("{err2:#}"), "bad: SomeErrorLoc");
-
     let res = fail_some_error_fields();
     let err = res.unwrap_err();
     assert_eq!(format!("{err}"), "fail (22)");

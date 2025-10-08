@@ -1,24 +1,33 @@
-use n0_error::{add_location, Error, StackErrorExt};
+use n0_error::{Error, StackErrorExt, add_location};
 
 #[add_location]
 #[derive(Error)]
 enum Out {
     #[display("outer")]
-    Outer { #[error(from)] source: In },
+    Outer {
+        #[error(from)]
+        source: In,
+    },
 }
 
 #[add_location]
 #[derive(Error)]
 enum In {
     #[error(transparent)]
-    Wrap { #[error(from)] source: Leaf },
+    Wrap {
+        #[error(from)]
+        source: Leaf,
+    },
 }
 
 #[add_location]
 #[derive(Error)]
 enum Leaf {
     #[display("leaf")]
-    Leaf { #[error(std_err)] source: std::io::Error },
+    Leaf {
+        #[error(std_err)]
+        source: std::io::Error,
+    },
 }
 
 #[test]
