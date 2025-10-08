@@ -60,12 +60,10 @@ pub mod error {
 
     #[n0_error::add_location]
     #[derive(n0_error::Error)]
+    #[error(from_sources)]
     pub enum OperationError {
         /// Failed to copy
-        Copy {
-            #[from]
-            source: CopyError,
-        },
+        Copy { source: CopyError },
     }
 
     #[n0_error::add_location]
@@ -76,20 +74,20 @@ pub mod error {
             // If sources only impl std::error::Error but not StackError, we need to mark them with `std`
             // This is needed unfortunately because we don't have specialization in rust,
             // otherwise we can't get both sources with locations (StackError) and foreign sources (std error)
-            #[std]
+            #[error(std_err)]
             source: io::Error,
         },
         /// Write error
         // Another io::Error, so can't use from, but can use the constructors
         Write {
-            #[std]
+            #[error(std_err)]
             source: io::Error,
         },
         #[display("Bad request - missing characters: {missing} {}", missing * 2)]
         BadRequest { missing: usize },
-        #[transparent]
+        #[error(transparent)]
         InvalidArgs {
-            #[from]
+            #[error(from)]
             source: InvalidArgsError,
         },
     }

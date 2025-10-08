@@ -63,22 +63,23 @@ fn add_location_field(fields: &mut Fields) -> Result<(), TokenStream> {
 }
 
 /// Derive macro that implements StackError, Display, Debug, std::error::Error,
-/// generates constructors, and `From<T>` impls for fields marked with `#[from]`.
+/// generates constructors, and `From<T>` impls for fields/variants configured via `#[error(..)]`.
 ///
 /// Recognized attributes:
-/// - on variants / the struct item: `#[display("...")]`, `#[transparent]`
-/// - on fields: `#[from]`, `#[std]` (mark std::error::Error source)
-#[proc_macro_derive(Error, attributes(display, transparent, from, std))]
+/// - on items/variants: `#[display("...")]`, `#[error(transparent)]`, `#[error(from_sources)]`, `#[error(std_sources)]`
+/// - on fields: `#[error(from)]`, `#[error(std_err)]`, `#[error(stack_err)]`, `#[error(source)]`
+#[proc_macro_derive(Error, attributes(display, error))]
 pub fn derive_error(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as syn::DeriveInput);
     let item_ident = &input.ident;
     let generics = &input.generics;
+    let top = TopOptions::from_attrs(&input.attrs);
     match &input.data {
         syn::Data::Enum(item_enum) => {
             let infos: Result<Vec<_>, _> = item_enum
                 .variants
                 .iter()
-                .map(|v| VariantInfo::parse(&v.ident, &v.fields, &v.attrs))
+                .map(|v| VariantInfo::parse(&v.ident, &v.fields, &v.attrs, &top))
                 .collect();
             match infos {
                 Ok(infos) => generate_enum_impls(item_ident, generics, infos),
@@ -86,7 +87,7 @@ pub fn derive_error(input: TokenStream) -> TokenStream {
             }
         }
         syn::Data::Struct(item) => {
-            match VariantInfo::parse(&item_ident, &item.fields, &input.attrs) {
+            match VariantInfo::parse(&item_ident, &item.fields, &input.attrs, &top) {
                 Ok(info) => generate_struct_impl(item_ident, generics, info),
                 Err(err) => err,
             }
@@ -102,12 +103,71 @@ enum SourceKind {
     Std,
 }
 
+#[derive(Default, Clone, Copy)]
+struct TopOptions {
+    from_sources: bool,
+    std_sources: bool,
+}
+
+impl TopOptions {
+    fn from_attrs(attrs: &[Attribute]) -> Self {
+        let mut out = TopOptions::default();
+        for attr in attrs.iter().filter(|a| a.path().is_ident("error")) {
+            // Parse like #[error(flag, flag2)]
+            let flags: syn::Result<Punctuated<Ident, syn::Token![,]>> =
+                attr.parse_args_with(Punctuated::<Ident, syn::Token![,]>::parse_terminated);
+            if let Ok(flags) = flags {
+                for f in flags {
+                    let s = f.to_string();
+                    match s.as_str() {
+                        "from_sources" => out.from_sources = true,
+                        "std_sources" => out.std_sources = true,
+                        _ => {}
+                    }
+                }
+            }
+        }
+        out
+    }
+}
+
+#[derive(Default, Clone, Copy)]
+struct FieldOptions {
+    is_source: bool,
+    from: bool,
+    std_err: bool,
+    stack_err: bool,
+}
+
+impl FieldOptions {
+    fn from_field(f: &Field) -> Self {
+        let mut fo = FieldOptions::default();
+        for attr in f.attrs.iter().filter(|a| a.path().is_ident("error")) {
+            let flags: syn::Result<Punctuated<Ident, syn::Token![,]>> =
+                attr.parse_args_with(Punctuated::<Ident, syn::Token![,]>::parse_terminated);
+            if let Ok(flags) = flags {
+                for ident in flags {
+                    match ident.to_string().as_str() {
+                        "from" => fo.from = true,
+                        "std_err" => fo.std_err = true,
+                        "stack_err" => fo.stack_err = true,
+                        "source" => fo.is_source = true,
+                        _ => {}
+                    }
+                }
+            }
+        }
+        fo
+    }
+}
+
 // For each variant, capture doc comment text or #[display] attr
 struct VariantInfo<'a> {
     ident: Ident,
     fields: Vec<&'a Field>,
     display: Option<proc_macro2::TokenStream>,
-    source: SourceKind,
+    source_kind: SourceKind,
+    source_ident: Option<Ident>,
     transparent: bool,
     from: Option<&'a Field>,
 }
@@ -144,6 +204,7 @@ impl<'a> VariantInfo<'a> {
         ident: &Ident,
         fields: &'a Fields,
         attrs: &[Attribute],
+        top: &TopOptions,
     ) -> Result<VariantInfo<'a>, proc_macro2::TokenStream> {
         let fields: Vec<&Field> = match fields {
             Fields::Named(ref fields) => fields.named.iter().collect(),
@@ -151,24 +212,51 @@ impl<'a> VariantInfo<'a> {
             Fields::Unnamed(ref fields) => fields.unnamed.iter().collect(),
         };
 
-        // get source field (by name `source` if present)
-        let source_field = fields
+        // Figure out source field: explicit #[error(source)] takes precedence, else a field literally named `source`
+        let explicit_sources: Vec<&Field> = fields
             .iter()
-            .find(|f| f.ident.as_ref().map(|i| i == "source").unwrap_or(false));
-
-        // parse transparent attribute
-        let transparent = attrs.iter().any(|a| a.path().is_ident("transparent"));
-        if transparent && source_field.is_none() {
+            .copied()
+            .filter(|f| FieldOptions::from_field(f).is_source)
+            .collect();
+        if explicit_sources.len() > 1 {
             return Err(err(
                 ident,
-                "Variants with a #[transparent] attribute need a single `source` field",
+                "Only one field per variant may have #[error(source)]",
             ));
         }
 
+        let source_field: Option<&Field> = if let Some(f) = explicit_sources.first() {
+            Some(*f)
+        } else {
+            fields
+                .iter()
+                .copied()
+                .find(|f| f.ident.as_ref().map(|i| i == "source").unwrap_or(false))
+        };
+
+        // parse transparent attribute via #[error(transparent)]
+        let transparent = attrs
+            .iter()
+            .filter(|a| a.path().is_ident("error"))
+            .filter_map(|attr| {
+                attr.parse_args_with(Punctuated::<Ident, syn::Token![,]>::parse_terminated)
+                    .ok()
+            })
+            .flat_map(|p| p.into_iter())
+            .any(|ident| ident == "transparent");
+        if transparent && source_field.is_none() {
+            return Err(err(
+                ident,
+                "Variants with #[error(transparent)] require a source field",
+            ));
+        }
+
+        // Determine source kind and optional From based on field options and top-level switches
         let source_kind = match source_field.as_ref() {
             None => SourceKind::None,
             Some(field) => {
-                if field.attrs.iter().any(|attr| attr.path().is_ident("std")) {
+                let fo = FieldOptions::from_field(field);
+                if fo.std_err || (top.std_sources && !fo.stack_err) {
                     SourceKind::Std
                 } else {
                     SourceKind::Stack
@@ -176,17 +264,23 @@ impl<'a> VariantInfo<'a> {
             }
         };
 
-        // parse #[from] attribute on fields
-        let mut from = None;
+        // parse #[error(from)] on fields, or infer from_sources if configured
+        let mut from: Option<&Field> = None;
         for field in fields.iter() {
-            if field.attrs.iter().any(|attr| attr.path().is_ident("from")) {
+            let fo = FieldOptions::from_field(field);
+            if fo.from {
                 if from.is_some() {
                     return Err(err(
                         &field.ident.clone().expect("named field"),
-                        "Only one field per variant may have #[from]",
+                        "Only one field per variant may have #[error(from)]",
                     ));
                 }
                 from = Some(*field);
+            }
+        }
+        if from.is_none() && top.from_sources {
+            if let Some(sf) = source_field.as_ref() {
+                from = Some(*sf);
             }
         }
 
@@ -194,7 +288,8 @@ impl<'a> VariantInfo<'a> {
             ident: ident.clone(),
             fields,
             display: get_doc_or_display(&attrs),
-            source: source_kind,
+            source_kind,
+            source_ident: source_field.and_then(|f| f.ident.clone()),
             transparent,
             from,
         })
@@ -244,23 +339,23 @@ fn generate_enum_impls(
 
     let match_source_arms = variants.iter().map(|vi| {
         let v_ident = &vi.ident;
-        match vi.source {
-            SourceKind::Stack => quote! { Self::#v_ident { source, .. } => Some(::n0_error::ErrorRef::Stack(source)), },
-            SourceKind::Std => quote! { Self::#v_ident { source, .. } => Some(::n0_error::ErrorRef::Std(source)), },
-            SourceKind::None => quote! { Self::#v_ident { .. } => None, }
+        match (vi.source_ident.as_ref(), &vi.source_kind) {
+            (Some(src_ident), SourceKind::Stack) => quote! { Self::#v_ident { #src_ident: source, .. } => Some(::n0_error::ErrorRef::Stack(source)), },
+            (Some(src_ident), SourceKind::Std) => quote! { Self::#v_ident { #src_ident: source, .. } => Some(::n0_error::ErrorRef::Std(source)), },
+            _ => quote! { Self::#v_ident { .. } => None, }
         }
     });
 
     let match_std_source_arms = variants.iter().map(|vi| {
         let v_ident = &vi.ident;
-        match vi.source {
-            SourceKind::Std => {
-                quote! { Self::#v_ident { source, .. } => Some(source as & dyn std::error::Error), }
+        match (vi.source_ident.as_ref(), &vi.source_kind) {
+            (Some(src_ident), SourceKind::Std) => {
+                quote! { Self::#v_ident { #src_ident: source, .. } => Some(source as & dyn std::error::Error), }
             }
-            SourceKind::Stack => {
-                quote! { Self::#v_ident { source, .. } => Some(::n0_error::StackError::as_std(source)), }
+            (Some(src_ident), SourceKind::Stack) => {
+                quote! { Self::#v_ident { #src_ident: source, .. } => Some(::n0_error::StackError::as_std(source)), }
             }
-            SourceKind::None => quote! { Self::#v_ident { .. } => None, },
+            _ => quote! { Self::#v_ident { .. } => None, },
         }
     });
 
@@ -276,7 +371,11 @@ fn generate_enum_impls(
     let match_fmt_message_arms = variants.iter().map(|vi| {
         let v_ident = &vi.ident;
         if vi.transparent {
-            quote! { Self::#v_ident { source, .. } => { write!(f, "{source}") } }
+            if let Some(src_ident) = &vi.source_ident {
+                quote! { Self::#v_ident { #src_ident: source, .. } => { write!(f, "{source}") } }
+            } else {
+                quote! { Self::#v_ident { .. } => { write!(f, "") } }
+            }
         } else {
             match &vi.display {
                 Some(expr) => {
@@ -437,16 +536,24 @@ fn generate_struct_impl(
         quote! { None }
     };
 
-    let get_error_source = match info.source {
-        SourceKind::Stack => quote! { Some(::n0_error::ErrorRef::Stack(&self.source)) },
-        SourceKind::Std => quote! { Some(::n0_error::ErrorRef::Std(&self.source)) },
-        SourceKind::None => quote! { None },
+    let get_error_source = match (info.source_ident.as_ref(), &info.source_kind) {
+        (Some(src_ident), SourceKind::Stack) => {
+            quote! { Some(::n0_error::ErrorRef::Stack(&self.#src_ident)) }
+        }
+        (Some(src_ident), SourceKind::Std) => {
+            quote! { Some(::n0_error::ErrorRef::Std(&self.#src_ident)) }
+        }
+        _ => quote! { None },
     };
 
-    let get_std_source = match info.source {
-        SourceKind::Std => quote! { Some(source as & dyn std::error::Error) },
-        SourceKind::Stack => quote! { Some(::n0_error::StackError::as_std(source)) },
-        SourceKind::None => quote! { None },
+    let get_std_source = match (info.source_ident.as_ref(), &info.source_kind) {
+        (Some(src_ident), SourceKind::Std) => {
+            quote! { Some(&self.#src_ident as & dyn std::error::Error) }
+        }
+        (Some(src_ident), SourceKind::Stack) => {
+            quote! { Some(::n0_error::StackError::as_std(&self.#src_ident)) }
+        }
+        _ => quote! { None },
     };
 
     let get_transparent = if info.transparent {
@@ -457,7 +564,11 @@ fn generate_struct_impl(
 
     let get_display = {
         if info.transparent {
-            quote! { write!(f, "{}", self.source) }
+            if let Some(src_ident) = &info.source_ident {
+                quote! { write!(f, "{}", self.#src_ident) }
+            } else {
+                quote! { write!(f, "") }
+            }
         } else {
             match &info.display {
                 Some(expr) => {
@@ -489,7 +600,7 @@ fn generate_struct_impl(
         }
     };
 
-    // From impls for variants marked with #[from]
+    // From impls for fields marked with #[error(from)] (or inferred via from_sources)
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let get_from = if let Some(field) = info.from {
         let src_ty = &field.ty;
