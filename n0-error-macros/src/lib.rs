@@ -1,5 +1,4 @@
 use darling::FromAttributes;
-use heck::ToSnakeCase;
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 use syn::{
@@ -393,6 +392,10 @@ fn generate_enum_impls(
                 self
             }
 
+            fn as_dyn(&self) -> &(dyn ::n0_error::StackError) {
+                self
+            }
+
             fn meta(&self) -> Option<&::n0_error::Meta> {
                 match self {
                     #( #match_meta_arms, )*
@@ -408,6 +411,12 @@ fn generate_enum_impls(
                 match self {
                     #( #match_transparent_arms, )*
                 }
+            }
+        }
+
+        impl ::n0_error::IntoAnyError for #enum_ident #generics {
+            fn into_any_error(self) -> ::n0_error::AnyError {
+                ::n0_error::AnyError::from_stack(self)
             }
         }
 
@@ -553,6 +562,10 @@ fn generate_struct_impl(
                 self
             }
 
+            fn as_dyn(&self) -> &(dyn ::n0_error::StackError) {
+                self
+            }
+
             fn meta(&self) -> Option<&::n0_error::Meta> {
                 #get_meta
             }
@@ -561,6 +574,13 @@ fn generate_struct_impl(
             }
             fn is_transparent(&self) -> bool {
                 #is_transparent
+            }
+        }
+
+
+        impl ::n0_error::IntoAnyError for #item_ident #generics {
+            fn into_any_error(self) -> ::n0_error::AnyError {
+                ::n0_error::AnyError::from_stack(self)
             }
         }
 

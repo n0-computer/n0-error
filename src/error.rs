@@ -9,35 +9,26 @@ pub enum SourceFormat {
 }
 
 pub trait StackError: fmt::Display + fmt::Debug + Send + Sync {
-    fn as_std(&self) -> &(dyn std::error::Error + Send + Sync);
+    fn as_std(&self) -> &(dyn std::error::Error + Send + Sync + 'static);
+    fn as_dyn(&self) -> &(dyn StackError);
     fn meta(&self) -> Option<&Meta>;
     fn source(&self) -> Option<ErrorRef<'_>>;
     fn is_transparent(&self) -> bool;
-}
 
-impl dyn StackError {
-    pub fn as_ref(&self) -> ErrorRef<'_> {
-        ErrorRef::Stack(self)
+    fn as_ref(&self) -> ErrorRef<'_> {
+        ErrorRef::Stack(self.as_dyn())
     }
 
-    pub fn stack(&self) -> Chain<'_> {
+    fn stack(&self) -> Chain<'_> {
         Chain::stack(self.as_ref())
     }
 
-    pub fn sources(&self) -> Chain<'_> {
+    fn sources(&self) -> Chain<'_> {
         Chain::sources(self.as_ref())
     }
 
-    pub fn as_source(&self) -> ErrorRef<'_> {
-        ErrorRef::Stack(self)
-    }
-
-    pub fn report(&self) -> Report<'_> {
-        Report::new(self)
-    }
-
-    pub fn location(&self) -> Option<&Location> {
-        self.meta().map(|m| m.location())
+    fn report(&self) -> Report<'_> {
+        Report::new(self.as_dyn())
     }
 }
 
@@ -58,24 +49,12 @@ pub trait StackErrorExt: StackError + Sized {
         self.into_any().context(context)
     }
 
-    fn stack(&self) -> Chain<'_> {
-        Chain::stack(self.as_ref())
-    }
-
-    fn sources(&self) -> Chain<'_> {
-        Chain::sources(self.as_ref())
-    }
-
-    fn report(&self) -> Report<'_> {
-        Report::new(self)
-    }
-
     fn as_ref(&self) -> ErrorRef<'_> {
-        ErrorRef::Stack(self)
+        ErrorRef::Stack(self.as_dyn())
     }
 }
 
-impl<T: StackError + Sized> StackErrorExt for T {}
+impl<T: StackError> StackErrorExt for T {}
 
 /// Reference to an error which can either be a std error or a stack error.
 ///
@@ -189,16 +168,18 @@ impl<'a> Report<'a> {
     }
 
     /// Formats only the location.
-    pub fn fmt_location(&self, f: &mut Formatter) -> fmt::Result {
-        let this = *self;
-        let location = this.inner.location();
-        let res = fmt_location(location, f);
-        res
+    pub fn fmt_location(&'a self, f: &mut Formatter) -> fmt::Result {
+        match self.inner.as_dyn().meta() {
+            None => Ok(()),
+            Some(meta) => {
+                write!(f, " (at {})", meta.location())
+            }
+        }
     }
 
     /// Formats only the sources.
-    pub fn fmt_sources(&self, f: &mut Formatter, format: SourceFormat) -> fmt::Result {
-        let chain = self.inner.sources();
+    pub fn fmt_sources(&'a self, f: &mut Formatter, format: SourceFormat) -> fmt::Result {
+        let chain = self.inner.as_dyn().sources();
         let mut chain = chain
             // We skip errors marked as transparent.
             .filter(|s| !s.is_transparent())

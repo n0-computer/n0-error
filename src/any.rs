@@ -98,7 +98,11 @@ impl fmt::Debug for AnyError {
 }
 
 impl StackError for AnyError {
-    fn as_std(&self) -> &(dyn std::error::Error + Send + Sync) {
+    fn as_dyn(&self) -> &(dyn StackError) {
+        self
+    }
+
+    fn as_std(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
         match &self.0 {
             Inner::Std(err, _) => err.as_ref(),
             Inner::Stack(err) => err.as_std(),
@@ -130,26 +134,39 @@ impl std::error::Error for AnyErrorAsStd {
     }
 }
 
-#[derive(derive_more::Display, derive_more::Debug)]
-struct AnyErrorAsStack<'a>(&'a AnyError);
+// #[derive(derive_more::Display, derive_more::Debug)]
+// struct AnyErrorAsStack<'a>(&'a AnyError);
 
-impl<'a> StackError for AnyErrorAsStack<'a> {
-    fn as_std(&self) -> &(dyn std::error::Error + Send + Sync) {
-        self.0.as_std()
-    }
+pub trait IntoAnyError {
+    fn into_any_error(self) -> AnyError;
+}
 
-    fn meta(&self) -> Option<&Meta> {
-        self.0.meta()
-    }
-
-    fn source(&self) -> Option<ErrorRef<'_>> {
-        self.0.source()
-    }
-
-    fn is_transparent(&self) -> bool {
-        self.0.is_transparent()
+impl<T: IntoAnyError> From<T> for AnyError {
+    fn from(value: T) -> Self {
+        value.into_any_error()
     }
 }
+
+// impl<'a> StackError for AyErrorAsStack<'a> {
+//     fn as_dyn(&self) -> &(dyn StackError) {
+//         self
+//     }
+//     fn as_std(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
+//         self.0.as_std()
+//     }
+
+//     fn meta(&self) -> Option<&Meta> {
+//         self.0.meta()
+//     }
+
+//     fn source(&self) -> Option<ErrorRef<'_>> {
+//         self.0.source()
+//     }
+
+//     fn is_transparent(&self) -> bool {
+//         self.0.is_transparent()
+//     }
+// }
 
 // impl<E: StackError> From<E> for AnyError {
 //     #[track_caller]

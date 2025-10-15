@@ -2,8 +2,8 @@ use std::io;
 
 use self::util::wait_sequential;
 use crate::{
-    AnyError, Error, Result, StackErrorExt, StackResultExt, StdResultExt, add_meta, anyerr, e,
-    ensure_any, format_err, meta,
+    AnyError, Error, Result, StackError, StackErrorExt, StackResultExt, StdResultExt, add_meta,
+    anyerr, e, ensure_any, format_err, meta,
 };
 mod util;
 
