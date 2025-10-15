@@ -43,7 +43,7 @@ macro_rules! whatever {
 #[macro_export]
 macro_rules! format_err {
     ($fmt:literal$(, $($arg:expr),* $(,)?)?) => {
-        $crate::AnyError::from_str(
+        $crate::AnyError::from_display(
             format!($fmt$(, $($arg),*)*),
         )
     };
@@ -104,7 +104,7 @@ macro_rules! anyerr {
                 $crate::AnyError::from_std(err)
             }
             match <T: ::std::fmt::Display> T -> $crate::AnyError {
-                $crate::AnyError::from_str(err)
+                $crate::AnyError::from_display(err)
             }
         }
     };

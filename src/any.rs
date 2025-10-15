@@ -1,4 +1,5 @@
 use std::{
+    convert::Infallible,
     fmt::{self, Formatter},
     ops::Deref,
 };
@@ -30,9 +31,14 @@ impl AnyError {
     }
 
     #[track_caller]
-    pub fn from_str(s: impl fmt::Display) -> Self {
+    pub fn from_display(s: impl fmt::Display) -> Self {
+        Self::from_string(s.to_string())
+    }
+
+    #[track_caller]
+    pub fn from_string(message: String) -> Self {
         FromString::WithoutSource {
-            message: s.to_string(),
+            message,
             meta: Meta::default(),
         }
         .into_any()
@@ -138,39 +144,44 @@ impl std::error::Error for AnyErrorAsStd {
 // struct AnyErrorAsStack<'a>(&'a AnyError);
 
 pub trait IntoAnyError {
+    #[track_caller]
     fn into_any_error(self) -> AnyError;
 }
 
+impl From<String> for AnyError {
+    #[track_caller]
+    fn from(value: String) -> Self {
+        Self::from_display(value)
+    }
+}
+
+impl From<&str> for AnyError {
+    #[track_caller]
+    fn from(value: &str) -> Self {
+        Self::from_display(value)
+    }
+}
+
+#[cfg(feature = "anyhow")]
+impl From<anyhow::Error> for AnyError {
+    #[track_caller]
+    fn from(value: anyhow::Error) -> Self {
+        Self::from_anyhow(value)
+    }
+}
+
+impl std::str::FromStr for AnyError {
+    type Err = Infallible;
+
+    #[track_caller]
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self::from_display(s))
+    }
+}
+
 impl<T: IntoAnyError> From<T> for AnyError {
+    #[track_caller]
     fn from(value: T) -> Self {
         value.into_any_error()
     }
 }
-
-// impl<'a> StackError for AyErrorAsStack<'a> {
-//     fn as_dyn(&self) -> &(dyn StackError) {
-//         self
-//     }
-//     fn as_std(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
-//         self.0.as_std()
-//     }
-
-//     fn meta(&self) -> Option<&Meta> {
-//         self.0.meta()
-//     }
-
-//     fn source(&self) -> Option<ErrorRef<'_>> {
-//         self.0.source()
-//     }
-
-//     fn is_transparent(&self) -> bool {
-//         self.0.is_transparent()
-//     }
-// }
-
-// impl<E: StackError> From<E> for AnyError {
-//     #[track_caller]
-//     fn from(value: E) -> Self {
-//         Self::from_stack(value)
-//     }
-// }
