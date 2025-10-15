@@ -1,23 +1,30 @@
 use std::io;
 
-use n0_error::{ResultExt, StackError, StackErrorExt};
+use n0_error::{StackError, StackErrorExt, StackResultExt, StdResultExt, e, meta};
 
 use self::error::CopyError;
 use crate::error::{InvalidArgsError, OperationError};
-
 fn main() {
     println!("### Read");
     let err = operation().err().unwrap();
     print(err);
 
     println!("### BadRequest");
-    let err = CopyError::bad_request(32);
+    // let err = e!(CopyError::BadRequest { missing: 32 });
+    let err = CopyError::BadRequest {
+        missing: 32,
+        foo: 32,
+        meta: meta(),
+    };
+
     print(err);
 
     println!("### InvalidArgs");
-    let err = InvalidArgsError::failed_to_parse();
-    let err = CopyError::invalid_args(err);
-    let err = OperationError::copy(err);
+    let err = e!(InvalidArgsError::FailedToParse);
+    let err = e!(CopyError::InvalidArgs, err);
+    // let err = e!(CopyError::InvalidArgs { source: err });
+    // let err = CopyError!(InvalidArgs { source: err });
+    let err = e!(OperationError::Copy { source: err });
     print(err);
 }
 
@@ -28,12 +35,7 @@ fn operation() -> Result<(), OperationError> {
 }
 
 fn copy() -> Result<(), CopyError> {
-    read().context(CopyError::read)?;
-    // let res = read();
-    // match res {
-    //     Ok(()) => Ok(()),
-    //     Err(err) => Err(CopyError::read(err)),
-    // }
+    read().stack(|err| e!(CopyError::Read { source: err }))?;
     Ok(())
 }
 
@@ -58,7 +60,7 @@ fn print(err: impl StackError) {
 pub mod error {
     use std::io;
 
-    #[n0_error::add_location]
+    #[n0_error::add_meta]
     #[derive(n0_error::Error)]
     #[error(from_sources)]
     pub enum OperationError {
@@ -66,7 +68,14 @@ pub mod error {
         Copy { source: CopyError },
     }
 
-    #[n0_error::add_location]
+    #[macro_export]
+    macro_rules! CopyError {
+        ($variant:ident { $($rest:tt)* }) => {
+            e!(CopyError::$variant { $($rest)* })
+        };
+    }
+
+    #[n0_error::add_meta]
     #[derive(n0_error::Error)]
     pub enum CopyError {
         /// Read error
@@ -84,15 +93,19 @@ pub mod error {
             source: io::Error,
         },
         #[display("Bad request - missing characters: {missing} {}", missing * 2)]
-        BadRequest { missing: usize },
+        BadRequest {
+            missing: usize,
+            foo: usize,
+        },
         #[error(transparent)]
         InvalidArgs {
             #[error(from)]
             source: InvalidArgsError,
         },
+        Foo,
     }
 
-    #[n0_error::add_location]
+    #[n0_error::add_meta]
     #[derive(n0_error::Error)]
     pub enum InvalidArgsError {
         /// Failed to parse arguments

@@ -7,7 +7,7 @@ use syn::{
     Fields, FieldsNamed, Ident,
 };
 
-/// Attribute macro that adds a `location: Option<::n0_error::Location>`
+/// Attribute macro that adds a `meta: ::n0_error::Meta`
 /// field to a struct or to all named-field variants of an enum. Does nothing else.
 ///
 /// If the struct or an enum variant is currently a unit kind, it will be converted
@@ -15,34 +15,31 @@ use syn::{
 ///
 /// Tuple structs or variants are not supported.
 #[proc_macro_attribute]
-pub fn add_location(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    match add_location_inner(parse_macro_input!(item as syn::Item)) {
+pub fn add_meta(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    match add_meta_inner(parse_macro_input!(item as syn::Item)) {
         Err(err) => err.to_compile_error().into(),
         Ok(tokens) => tokens.into(),
     }
 }
 
-fn add_location_inner(mut input: syn::Item) -> Result<proc_macro2::TokenStream, syn::Error> {
+fn add_meta_inner(mut input: syn::Item) -> Result<proc_macro2::TokenStream, syn::Error> {
     match &mut input {
         syn::Item::Enum(item_enum) => {
             for variant in item_enum.variants.iter_mut() {
-                add_location_field(&mut variant.fields)?;
+                add_meta_field(&mut variant.fields)?;
             }
             Ok(quote! { #item_enum })
         }
         syn::Item::Struct(item_struct) => {
-            add_location_field(&mut item_struct.fields)?;
+            add_meta_field(&mut item_struct.fields)?;
             Ok(quote! { #item_struct })
         }
-        _ => Err(err(
-            &input,
-            "#[add_location] only supports enums and structs",
-        )),
+        _ => Err(err(&input, "#[add_meta] only supports enums and structs")),
     }
 }
 
-fn add_location_field(fields: &mut Fields) -> Result<(), syn::Error> {
-    let field = parse_quote! { location: Option<::n0_error::Location> };
+fn add_meta_field(fields: &mut Fields) -> Result<(), syn::Error> {
+    let field = parse_quote! { meta: ::n0_error::Meta };
     match fields {
         Fields::Named(fields) => {
             fields.named.push(field);
@@ -59,13 +56,13 @@ fn add_location_field(fields: &mut Fields) -> Result<(), syn::Error> {
         }
         Fields::Unnamed(_) => Err(err(
             &fields,
-            "#[add_location] does not support tuple variants or structs",
+            "#[add_meta] does not support tuple variants or structs",
         )),
     }
 }
 
 /// Derive macro that implements StackError, Display, Debug, std::error::Error,
-/// generates constructors, and `From<T>` impls for fields/variants configured via `#[error(..)]`.
+/// and generates `From<T>` impls for fields/variants configured via `#[error(..)]`.
 ///
 /// Recognized attributes:
 /// - on items/variants: `#[display("...")]`, `#[error(transparent)]`, `#[error(from_sources)]`, `#[error(std_sources)]`
@@ -187,24 +184,24 @@ impl<'a> VariantInfo<'a> {
             .map(|f| f.field.ident.as_ref().unwrap())
     }
 
-    fn location(&self) -> Option<&Field> {
+    fn meta(&self) -> Option<&Field> {
         self.fields()
             .iter()
             .map(|f| &f.field)
             .copied()
-            .find(|f| f.ident.as_ref().unwrap() == "location")
+            .find(|f| f.ident.as_ref().unwrap() == "meta")
     }
 
-    fn fields_without_location(&self) -> impl Iterator<Item = &Field> {
+    fn fields_without_meta(&self) -> impl Iterator<Item = &Field> {
         self.fields()
             .iter()
             .map(|f| &f.field)
             .copied()
-            .filter(|f| f.ident.as_ref().unwrap() != "location")
+            .filter(|f| f.ident.as_ref().unwrap() != "meta")
     }
 
-    fn field_idents_without_location(&self) -> impl Iterator<Item = &Ident> {
-        self.fields_without_location()
+    fn field_idents_without_meta(&self) -> impl Iterator<Item = &Ident> {
+        self.fields_without_meta()
             .map(|f| f.ident.as_ref().unwrap())
     }
 
@@ -290,50 +287,15 @@ fn generate_enum_impls(
     generics: &syn::Generics,
     variants: Vec<VariantInfo>,
 ) -> proc_macro2::TokenStream {
-    // Constructors like `fn read(source: ...) -> Self`
-    let constructors = variants.iter().map(|vi| {
-        let v_ident = &vi.ident;
-        let fn_ident = Ident::new(&v_ident.to_string().to_snake_case(), v_ident.span());
-        let params = vi.fields_without_location().map(|f| {
-            let ident = f.ident.as_ref().unwrap();
-            let ty = &f.ty;
-            quote! { #ident: #ty }
-        });
-        let names = vi.field_idents_without_location();
-        let location = vi
-            .location()
-            .map(|_| quote!(location: ::n0_error::location()));
-        let comma = (location.is_some() && vi.fields().len() > 1).then(|| quote!(,));
-        let doc = format!("Creates a new [`Self::{}`] error.", v_ident);
-        quote! {
-            #[doc = #doc]
-            #[track_caller]
-            pub fn #fn_ident(#(#params),*) -> Self {
-                Self::#v_ident { #(#names),* #comma #location }
-            }
-        }
-    });
-
     // StackError impl pieces
-    let match_location_arms = variants.iter().map(|vi| {
+    let match_meta_arms = variants.iter().map(|vi| {
         let v_ident = &vi.ident;
-        if vi.location().is_some() {
+        if vi.meta().is_some() {
             let suffix = (vi.fields().len() > 1).then(|| quote!(, ..));
-            quote! { Self::#v_ident { location #suffix } => location.as_ref() }
+            quote! { Self::#v_ident { meta #suffix } => Some(&meta) }
         } else {
             let inner = (!vi.fields().is_empty()).then(|| quote!(..));
             quote! { Self::#v_ident { #inner } => None }
-        }
-    });
-
-    let match_set_location_arms = variants.iter().map(|vi| {
-        let v_ident = &vi.ident;
-        if vi.location().is_some() {
-            let suffix = (vi.fields().len() > 1).then(|| quote!(, ..));
-            quote! { Self::#v_ident { location #suffix } => { *location = Some(new_location) }}
-        } else {
-            let inner = (!vi.fields().is_empty()).then(|| quote!(..));
-            quote! { Self::#v_ident { #inner } => {} }
         }
     });
 
@@ -411,41 +373,32 @@ fn generate_enum_impls(
     let from_impls = variants.iter().filter_map(|vi| vi.from_field.map(|field| (vi, field))).map(|(vi, field)| {
         let v_ident = &vi.ident;
         let Field { ty, ident, .. } = &field;
-        let location = vi
-            .location()
-            .map(|_| quote!{ location: ::n0_error::location() });
-        let comma = (location.is_some() && vi.fields().len() > 1).then(|| quote!(,));
+        let meta = vi
+            .meta()
+            .map(|_| quote!{ meta: ::n0_error::Meta::new() });
+        let comma = (meta.is_some() && vi.fields().len() > 1).then(|| quote!(,));
         quote! {
             impl #impl_generics ::core::convert::From<#ty> for #enum_ident #ty_generics #where_clause {
                 #[track_caller]
                 fn from(source: #ty) -> Self {
-                    Self::#v_ident { #ident: source #comma #location }
+                    Self::#v_ident { #ident: source #comma #meta }
                 }
             }
         }
     });
 
     quote! {
-        impl #enum_ident #generics {
-            #( #constructors )*
-        }
-
         impl ::n0_error::StackError for #enum_ident #generics {
             fn as_std(&self) -> &(dyn ::std::error::Error + ::std::marker::Send + ::std::marker::Sync + 'static) {
                 self
             }
 
-            fn location(&self) -> Option<&::n0_error::Location> {
+            fn meta(&self) -> Option<&::n0_error::Meta> {
                 match self {
-                    #( #match_location_arms, )*
+                    #( #match_meta_arms, )*
                 }
             }
 
-            fn set_location(&mut self, new_location: ::n0_error::Location) {
-                match self {
-                    #( #match_set_location_arms, )*
-                }
-            }
             fn source(&self) -> Option<::n0_error::ErrorRef<'_>> {
                 match self {
                     #( #match_source_arms )*
@@ -493,7 +446,6 @@ fn generate_enum_impls(
                 }
             }
         }
-
         #( #from_impls )*
     }
 }
@@ -504,35 +456,27 @@ fn generate_struct_impl(
     info: VariantInfo,
 ) -> proc_macro2::TokenStream {
     let constructor = {
-        let params = info.fields_without_location().map(|f| {
+        let params = info.fields_without_meta().map(|f| {
             let ident = f.ident.as_ref().unwrap();
             let ty = &f.ty;
             quote! { #ident: #ty }
         });
-        let names = info.field_idents_without_location();
-        let location = info
-            .location()
-            .map(|_| quote!(location: ::n0_error::location()));
-        let comma = (location.is_some() && info.fields().len() > 1).then(|| quote!(,));
+        let names = info.field_idents_without_meta();
+        let meta = info.meta().map(|_| quote!(meta: ::n0_error::Meta::new()));
+        let comma = (meta.is_some() && info.fields().len() > 1).then(|| quote!(,));
         let doc = format!("Creates a new [`{}`] error.", item_ident);
         quote! {
             #[doc = #doc]
             #[track_caller]
             pub fn new(#(#params),*) -> Self {
-                Self { #(#names),* #comma #location }
+                Self { #(#names),* #comma #meta }
             }
         }
     };
-    let get_location = if info.location().is_some() {
-        quote!(self.location.as_ref())
+    let get_meta = if info.meta().is_some() {
+        quote!(Some(&self.meta))
     } else {
         quote! { None }
-    };
-
-    let set_location = if info.location().is_some() {
-        quote!(self.location = Some(new_location);)
-    } else {
-        quote! {}
     };
 
     let get_error_source = match &info.source {
@@ -585,15 +529,13 @@ fn generate_struct_impl(
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let get_from = if let Some(field) = info.from_field {
         let Field { ty, ident, .. } = &field;
-        let location = info
-            .location()
-            .map(|_| quote!(location: ::n0_error::location()));
-        let comma = (location.is_some() && info.fields().len() > 1).then(|| quote!(,));
+        let meta = info.meta().map(|_| quote!(meta: ::n0_error::Meta::new()));
+        let comma = (meta.is_some() && info.fields().len() > 1).then(|| quote!(,));
         Some(quote! {
             impl #impl_generics ::core::convert::From<#ty> for #item_ident #ty_generics #where_clause {
                 #[track_caller]
                 fn from(source: #ty) -> Self {
-                    Self { #ident: source #comma #location }
+                    Self { #ident: source #comma #meta }
                 }
             }
         })
@@ -611,11 +553,8 @@ fn generate_struct_impl(
                 self
             }
 
-            fn location(&self) -> Option<&::n0_error::Location> {
-                #get_location
-            }
-            fn set_location(&mut self, new_location: ::n0_error::Location) {
-                #set_location
+            fn meta(&self) -> Option<&::n0_error::Meta> {
+                #get_meta
             }
             fn source(&self) -> Option<::n0_error::ErrorRef<'_>> {
                 #get_error_source

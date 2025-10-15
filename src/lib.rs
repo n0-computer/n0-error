@@ -1,15 +1,16 @@
-pub use n0_error_macros::{Error, add_location};
+pub use n0_error_macros::{Error, add_meta};
 
 extern crate self as n0_error;
 
 mod any;
 mod error;
 mod ext;
-mod location;
+mod macros;
+mod meta;
 #[cfg(test)]
 mod tests;
 
-pub use self::{any::*, error::*, ext::*, location::*};
+pub use self::{any::*, error::*, ext::*, macros::*, meta::*};
 
 pub type Result<T = (), E = AnyError> = std::result::Result<T, E>;
 
