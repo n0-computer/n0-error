@@ -1,22 +1,18 @@
 #[macro_export]
 macro_rules! e {
     // No fields
-    ($($err:tt)::+ $(,)?) => {
+    ($($err:tt)::+) => {
         $($err)::+ { meta: ::n0_error::Meta::default() }
     };
 
+    // Single expression: treat as source
     ($($err:tt)::+ , $source:expr) => {
         $($err)::+ { source: $source, meta: ::n0_error::Meta::default() }
     };
 
-    // // Fields with a trailing comma
-    // ($($err:tt)::+ { $($body:tt)* , }) => {
-    //     $($err)::+ { $($body)* meta: ::n0_error::Meta::default() }
-    // };
-
-    // Fields without a trailing comma
+    // Fields and values
     ($($err:tt)::+ { $($body:tt)* }) => {
-        $($err)::+ { $($body)*, meta: ::n0_error::Meta::default() }
+        $($err)::+ { meta: ::n0_error::Meta::default(), $($body)* }
     };
 }
 
@@ -108,6 +104,4 @@ macro_rules! anyerr {
             }
         }
     };
-
-
 }

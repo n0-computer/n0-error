@@ -92,7 +92,7 @@ impl<'a> ErrorRef<'a> {
         }
     }
 
-    /// Returns the next source in the source chain as a [`ErrorSource`].
+    /// Returns the next source in the source chain as a [`ErrorRef`].
     pub fn source(self) -> Option<ErrorRef<'a>> {
         match self {
             Self::Std(error, _) => error.source().map(ErrorRef::std),

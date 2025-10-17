@@ -172,7 +172,7 @@ pub(crate) struct NoneError {}
 /// A simple string error, providing a message and optionally a source.
 #[add_meta]
 #[derive(crate::Error)]
-pub enum FromString {
+pub(crate) enum FromString {
     #[display("{message}")]
     WithSource { message: String, source: AnyError },
     #[display("{message}")]
