@@ -328,12 +328,15 @@ fn test_context() {
     }
     println!("{:?}", fail_a().std_context("foo").unwrap_err());
     println!("---");
-    println!("{:?}", fail_a().stack(|s| e!(AppError::My, s)).unwrap_err());
+    println!(
+        "{:?}",
+        fail_a().map_err(|s| e!(AppError::My, s)).unwrap_err()
+    );
     println!("---");
     println!(
         "{:?}",
         fail_a()
-            .stack(|source| e!(AppError::Baz { source, count: 32 }))
+            .map_err(|source| e!(AppError::Baz { source, count: 32 }))
             .unwrap_err()
     );
     println!("---");

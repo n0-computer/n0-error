@@ -1,6 +1,6 @@
 use std::io;
 
-use n0_error::{StackError, StdResultExt, e, meta};
+use n0_error::{StackError, e, meta};
 
 use self::error::CopyError;
 use crate::error::{InvalidArgsError, OperationError};
@@ -35,7 +35,7 @@ fn operation() -> Result<(), OperationError> {
 }
 
 fn copy() -> Result<(), CopyError> {
-    read().stack(|err| e!(CopyError::Read { source: err }))?;
+    read().map_err(|err| e!(CopyError::Read { source: err }))?;
     Ok(())
 }
 

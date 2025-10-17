@@ -162,6 +162,13 @@ impl From<&str> for AnyError {
     }
 }
 
+impl From<Box<dyn std::error::Error + Send + Sync>> for AnyError {
+    #[track_caller]
+    fn from(value: Box<dyn std::error::Error + Send + Sync>) -> Self {
+        Self::from_std_box(value)
+    }
+}
+
 #[cfg(feature = "anyhow")]
 impl From<anyhow::Error> for AnyError {
     #[track_caller]

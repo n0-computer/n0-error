@@ -2,8 +2,9 @@ use std::fmt;
 
 use crate::{AnyError, StackError, StackErrorExt, add_meta, meta};
 
-/// Extension methods for results to provide additional context to errors.
+/// Extension methods for results to provide additional context to [`StackError`]s.
 pub trait StackResultExt<T, E> {
+    /// Wraps the result's error value with additional context.
     #[track_caller]
     fn context(self, context: impl fmt::Display) -> Result<T, AnyError>;
 
@@ -40,8 +41,9 @@ impl<T, E: StackError + 'static> StackResultExt<T, E> for Result<T, E> {
     }
 }
 
-/// Extension methods for results to provide additional context to errors.
+/// Extension methods for results to provide additional context to std errors.
 pub trait StdResultExt<T, E> {
+    /// Wraps the result's error value with additional context.
     #[track_caller]
     fn std_context(self, context: impl fmt::Display) -> Result<T, AnyError>;
 
@@ -54,11 +56,9 @@ pub trait StdResultExt<T, E> {
         F: FnOnce(&E) -> C,
         C: fmt::Display;
 
+    /// Convert the result's error into [`AnyError`]
     #[track_caller]
     fn e(self) -> Result<T, AnyError>;
-
-    #[track_caller]
-    fn stack<E2>(self, next: impl Fn(E) -> E2) -> Result<T, E2>;
 }
 
 impl<T, E: std::error::Error + Send + Sync + 'static> StdResultExt<T, E> for Result<T, E> {
@@ -87,13 +87,6 @@ impl<T, E: std::error::Error + Send + Sync + 'static> StdResultExt<T, E> for Res
         match self {
             Ok(v) => Ok(v),
             Err(err) => Err(AnyError::from_std(err)),
-        }
-    }
-
-    fn stack<E2>(self, next: impl Fn(E) -> E2) -> Result<T, E2> {
-        match self {
-            Ok(v) => Ok(v),
-            Err(err) => Err(next(err)),
         }
     }
 }
@@ -125,16 +118,6 @@ impl<T> StdResultExt<T, NoneError> for Option<T> {
         match self {
             Some(v) => Ok(v),
             None => Err(NoneError { meta: meta() }.into_any()),
-        }
-    }
-
-    fn stack<E2>(self, next: impl Fn(NoneError) -> E2) -> Result<T, E2> {
-        match self {
-            Some(v) => Ok(v),
-            None => {
-                let err = NoneError { meta: meta() };
-                Err(next(err))
-            }
         }
     }
 }
