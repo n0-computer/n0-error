@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::{AnyError, StackError, StackErrorExt, add_meta, meta};
 
-/// Extension methods for results to provide additional context to [`StackError`]s.
+/// Provides extension methods to add context to [`StackError`]s.
 pub trait StackResultExt<T, E> {
     /// Wraps the result's error value with additional context.
     #[track_caller]
@@ -41,7 +41,7 @@ impl<T, E: StackError + 'static> StackResultExt<T, E> for Result<T, E> {
     }
 }
 
-/// Extension methods for results to provide additional context to std errors.
+/// Provides extension methods to add context to std errors.
 pub trait StdResultExt<T, E> {
     /// Wraps the result's error value with additional context.
     #[track_caller]
@@ -56,7 +56,7 @@ pub trait StdResultExt<T, E> {
         F: FnOnce(&E) -> C,
         C: fmt::Display;
 
-    /// Convert the result's error into [`AnyError`]
+    /// Converts the result's error into [`AnyError`].
     #[track_caller]
     fn e(self) -> Result<T, AnyError>;
 }

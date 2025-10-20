@@ -1,3 +1,8 @@
+/// Constructs an error enum/struct value while automatically filling `meta: Meta`.
+///
+/// - `e!(MyError::Variant)` constructs `MyError::Variant { meta: Meta::default() }`.
+/// - `e!(MyError::Variant, source)` constructs `MyError::Variant { source, meta: Meta::default() }`.
+/// - `e!(MyError::Variant { field: value, other })` constructs `MyError::Variant { field: value, other, meta: Meta::default() }`
 #[macro_export]
 macro_rules! e {
     // No fields
@@ -16,6 +21,10 @@ macro_rules! e {
     };
 }
 
+/// Propagates an error, adding formatted context.
+///
+/// - `whatever!("msg")` returns `Err(format_err!(...))`.
+/// - `whatever!(source, "msg {x}", x)` unwraps `source` or returns with context.
 #[macro_export]
 macro_rules! whatever {
     ($fmt:literal$(, $($arg:expr),* $(,)?)?) => {
@@ -36,6 +45,7 @@ macro_rules! whatever {
     };
 }
 
+/// Formats a message into an [`AnyError`].
 #[macro_export]
 macro_rules! format_err {
     ($fmt:literal$(, $($arg:expr),* $(,)?)?) => {
@@ -44,6 +54,8 @@ macro_rules! format_err {
         )
     };
 }
+
+/// Ensures a condition, otherwise returns the given error.
 #[macro_export]
 macro_rules! ensure {
     ($predicate:expr, $err:expr $(,)?) => {
@@ -53,6 +65,7 @@ macro_rules! ensure {
     };
 }
 
+/// Ensures a condition, otherwise returns an [`AnyError`].
 #[macro_export]
 macro_rules! ensure_any {
     ($cond:expr, $fmt:literal) => {
@@ -77,6 +90,14 @@ macro_rules! ensure_any {
 #[doc(hidden)]
 pub use spez as __spez;
 
+/// Converts a value into [`AnyError`], or formats a message.
+///
+/// - `anyerr!("msg")` formats a message.
+/// - `anyerr!(value)` converts `StackError`, std error, or `Display` in [`AnyError`].
+///
+/// This uses *autoref specialization* to use the most details available: if given a [`StackError`]
+/// it uses [`AnyError::from_stack`], if given a std error, uses [`AnyError::from_std`], if given a value
+/// that impls `Display` it uses [`AnyError::from_display`] - in this order.
 #[macro_export]
 macro_rules! anyerr {
     ($fmt:literal) => {

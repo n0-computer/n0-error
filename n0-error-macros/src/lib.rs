@@ -414,9 +414,9 @@ fn generate_enum_impls(
             }
         }
 
-        impl ::n0_error::IntoAnyError for #enum_ident #generics {
-            fn into_any_error(self) -> ::n0_error::AnyError {
-                ::n0_error::AnyError::from_stack(self)
+        impl #impl_generics ::core::convert::From<#enum_ident> for ::n0_error::AnyError #ty_generics #where_clause {
+            fn from(value: #enum_ident) -> ::n0_error::AnyError {
+                ::n0_error::AnyError::from_stack(value)
             }
         }
 
@@ -578,9 +578,9 @@ fn generate_struct_impl(
         }
 
 
-        impl ::n0_error::IntoAnyError for #item_ident #generics {
-            fn into_any_error(self) -> ::n0_error::AnyError {
-                ::n0_error::AnyError::from_stack(self)
+        impl #impl_generics ::core::convert::From<#item_ident> for ::n0_error::AnyError #ty_generics #where_clause {
+            fn from(value: #item_ident) -> ::n0_error::AnyError {
+                ::n0_error::AnyError::from_stack(value)
             }
         }
 

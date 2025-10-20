@@ -6,6 +6,18 @@ use std::{
 
 use crate::{ErrorRef, FromString, Meta, SourceFormat, StackError, StackErrorExt};
 
+/// Type-erased error that can wrap a [`StackError`] or any [`std::error::Error`].
+///
+/// [`StackError`]s have a blanket impl to convert into [`AnyError`], while preserving
+/// their call-site location info.
+///
+/// Errors that implement [`std::error::Error`] but not [`StackError`] can't convert to
+/// [`AnyError`] automatically. Use either [`AnyError::from_std`] or [`crate::StdResultExt::e`]
+/// to convert std errors into [`AnyError`].
+///
+/// This is necessary unfortunately because if we had a blanket conversion from std errors to `AnyError`,
+/// this blanket conversion would also apply to [`StackError`]s, thus losing their call-site location
+/// info in the conversion.
 pub struct AnyError(Inner);
 
 enum Inner {
@@ -14,27 +26,36 @@ enum Inner {
 }
 
 impl AnyError {
+    /// Creates an [`AnyError`] from a std error.
+    ///
+    /// This captures call-site metadata.
     #[track_caller]
     pub fn from_std(err: impl std::error::Error + Send + Sync + 'static) -> Self {
         Self::from_std_box(Box::new(err))
     }
 
+    /// Creates an [`AnyError`] from a [`anyhow::Error`].
     #[track_caller]
     #[cfg(feature = "anyhow")]
     pub fn from_anyhow(err: anyhow::Error) -> Self {
         Self::from_std_box(err.into_boxed_dyn_error())
     }
 
+    /// Creates an [`AnyError`] from a bosed std error.
+    ///
+    /// This captures call-site metadata.
     #[track_caller]
     pub fn from_std_box(err: Box<dyn std::error::Error + Send + Sync + 'static>) -> Self {
         Self(Inner::Std(err, Meta::default()))
     }
 
+    /// Creates an [`AnyError`] from any `Display` value by formatting it into a message.
     #[track_caller]
     pub fn from_display(s: impl fmt::Display) -> Self {
         Self::from_string(s.to_string())
     }
 
+    /// Creates an [`AnyError`] from a message string.
     #[track_caller]
     pub fn from_string(message: String) -> Self {
         FromString::WithoutSource {
@@ -44,16 +65,23 @@ impl AnyError {
         .into_any()
     }
 
+    /// Creates an [`AnyError`] from a [`StackError`].
+    ///
+    /// This preserves the error's call-site metadata.
+    ///
+    /// Equivalent to `AnyError::from(err)`.
     #[track_caller]
     pub fn from_stack(err: impl StackError + 'static) -> Self {
         Self::from_stack_box(Box::new(err))
     }
 
+    /// Creates an [`AnyError`] from a boxed [`StackError`].
     #[track_caller]
     pub fn from_stack_box(err: Box<dyn StackError>) -> Self {
         Self(Inner::Stack(err))
     }
 
+    /// Adds additional context on top of this error.
     #[track_caller]
     pub fn context(self, context: impl fmt::Display) -> AnyError {
         FromString::WithSource {
@@ -64,15 +92,9 @@ impl AnyError {
         .into_any()
     }
 
-    pub fn as_ref<'a>(&'a self) -> ErrorRef<'a> {
-        match &self.0 {
-            Inner::Stack(error) => ErrorRef::Stack(error.deref()),
-            Inner::Std(error, _) => ErrorRef::std(error.as_ref()),
-        }
-    }
-
+    /// Converts into boxed std error.
     pub fn into_boxed_dyn_error(self) -> Box<dyn std::error::Error + Send + Sync + 'static> {
-        Box::new(AnyErrorAsStd(self))
+        Box::new(self)
     }
 }
 
@@ -129,23 +151,19 @@ impl StackError for AnyError {
     fn is_transparent(&self) -> bool {
         self.as_ref().is_transparent()
     }
-}
 
-#[derive(derive_more::Debug, derive_more::Display)]
-struct AnyErrorAsStd(AnyError);
-
-impl std::error::Error for AnyErrorAsStd {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.0.as_std().source()
+    fn as_ref<'a>(&'a self) -> ErrorRef<'a> {
+        match &self.0 {
+            Inner::Stack(error) => ErrorRef::Stack(error.deref()),
+            Inner::Std(error, meta) => ErrorRef::std_with_meta(error.as_ref(), meta),
+        }
     }
 }
 
-// #[derive(derive_more::Display, derive_more::Debug)]
-// struct AnyErrorAsStack<'a>(&'a AnyError);
-
-pub trait IntoAnyError {
-    #[track_caller]
-    fn into_any_error(self) -> AnyError;
+impl std::error::Error for AnyError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.as_std().source()
+    }
 }
 
 impl From<String> for AnyError {
@@ -183,12 +201,5 @@ impl std::str::FromStr for AnyError {
     #[track_caller]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Self::from_display(s))
-    }
-}
-
-impl<T: IntoAnyError> From<T> for AnyError {
-    #[track_caller]
-    fn from(value: T) -> Self {
-        value.into_any_error()
     }
 }
