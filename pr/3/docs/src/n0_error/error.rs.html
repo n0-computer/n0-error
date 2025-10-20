@@ -294,8 +294,7 @@
 <a href="#293" id="293">293</a>
 <a href="#294" id="294">294</a>
 <a href="#295" id="295">295</a>
-<a href="#296" id="296">296</a>
-<a href="#297" id="297">297</a></pre></div><pre class="rust"><code><span class="kw">use </span>std::fmt::{<span class="self">self</span>, Formatter};
+<a href="#296" id="296">296</a></pre></div><pre class="rust"><code><span class="kw">use </span>std::fmt::{<span class="self">self</span>, Formatter};
 
 <span class="kw">use crate</span>::{AnyError, Location, Meta, backtrace_enabled};
 
@@ -391,8 +390,7 @@
         ErrorRef::Std(err, <span class="prelude-val">None</span>)
     }
 
-    <span class="doccomment">///
-    </span><span class="kw">pub fn </span>std_with_meta(err: <span class="kw-2">&amp;</span><span class="lifetime">'a </span><span class="kw">dyn </span>std::error::Error, meta: <span class="kw-2">&amp;</span><span class="lifetime">'a </span>Meta) -&gt; ErrorRef&lt;<span class="lifetime">'a</span>&gt; {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>std_with_meta(err: <span class="kw-2">&amp;</span><span class="lifetime">'a </span><span class="kw">dyn </span>std::error::Error, meta: <span class="kw-2">&amp;</span><span class="lifetime">'a </span>Meta) -&gt; ErrorRef&lt;<span class="lifetime">'a</span>&gt; {
         ErrorRef::Std(err, <span class="prelude-val">Some</span>(meta))
     }
 
