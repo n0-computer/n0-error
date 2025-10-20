@@ -150,7 +150,7 @@ impl<T> StackResultExt<T, NoneError> for Option<T> {
 #[add_meta]
 #[derive(crate::Error)]
 #[display("Expected some, found none")]
-pub(crate) struct NoneError {}
+pub struct NoneError {}
 
 /// A simple string error, providing a message and optionally a source.
 #[add_meta]
