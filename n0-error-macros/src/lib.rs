@@ -6,8 +6,8 @@ use syn::{
     Fields, FieldsNamed, Ident,
 };
 
-/// Attribute macro that adds a `meta: ::n0_error::Meta`
-/// field to a struct or to all named-field variants of an enum. Does nothing else.
+/// Attribute macro that adds a `meta: ::n0_error::Meta` field to a struct or
+/// to all named-field variants of an enum. Does nothing else.
 ///
 /// If the struct or an enum variant is currently a unit kind, it will be converted
 /// to a named-field kind.
@@ -64,8 +64,16 @@ fn add_meta_field(fields: &mut Fields) -> Result<(), syn::Error> {
 /// and generates `From<T>` impls for fields/variants configured via `#[error(..)]`.
 ///
 /// Recognized attributes:
-/// - on items/variants: `#[display("...")]`, `#[error(transparent)]`, `#[error(from_sources)]`, `#[error(std_sources)]`
-/// - on fields: `#[error(from)]`, `#[error(std_err)]`, `#[error(stack_err)]`, `#[error(source)]`
+/// - on enums:
+///   - `#[error(from_sources)]`: Creates `From` impls for the `source` types of all variants. Will fail to compile if multiple sources have the same type.
+///   - `#[error(std_sources)]`: Defaults all sources to be std errors instead of stack errors.
+/// - on enum variants and structs:
+///   - `#[display("..")]`: Sets the display formatting. You can refer to named fields by their names, and to tuple fields by `_0`, `_1` etc.
+///   - `#[error(transparent)]`: Directly forwards the display implementation to the error source, and omits the outer error in the source chain when reporting errors.
+/// - on fields:
+///   - `#[error(source)]`: Sets a field as the source of this error. If a field is named `source` this is applied implicitly and not needed.
+///   - `#[error(from)]`: Creates a `From` impl for the field's type to the error type.
+///   - `#[error(std_err)]`: Marks the error as a `std` error. Without this attribute, errors are expected to implement `StackError`. Only applicable to source fields.
 #[proc_macro_derive(Error, attributes(display, error))]
 pub fn derive_error(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as syn::DeriveInput);

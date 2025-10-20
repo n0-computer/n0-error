@@ -5,6 +5,7 @@
 //!
 //! Inspired by anyhow, thiserror, and snafu.
 
+#![doc = include_str!("../README.md")]
 #![deny(missing_docs)]
 
 pub use n0_error_macros::Error;
