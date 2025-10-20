@@ -358,3 +358,37 @@ fn test_any() {
     let x = anyerr!(io::Error::other("foo"));
     println!("{x:?}");
 }
+
+// --- tuple support tests ---
+
+#[add_meta]
+#[derive(n0_error::Error)]
+#[display("tuple fail ({_0})")]
+struct TupleStruct(u32);
+
+#[test]
+fn test_tuple_struct_basic() {
+    let _guard = wait_sequential();
+    n0_error::set_backtrace_enabled(false);
+    let err = TupleStruct::new(7);
+    assert_eq!(format!("{err}"), "tuple fail (7)");
+}
+
+#[add_meta]
+#[derive(n0_error::Error)]
+enum TupleEnum {
+    #[display("io failed")]
+    Io(#[error(source, std_err)] io::Error),
+}
+
+#[test]
+fn test_tuple_enum_source_and_meta() {
+    let _guard = wait_sequential();
+    n0_error::set_backtrace_enabled(false);
+    let e = TupleEnum::Io(io::Error::other("oops"), meta());
+    // Display uses variant text
+    assert_eq!(format!("{e}"), "io failed");
+    // Std source is the inner io::Error
+    let src = std::error::Error::source(&e).unwrap();
+    assert_eq!(src.to_string(), "oops");
+}
