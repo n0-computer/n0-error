@@ -4,8 +4,6 @@
 
 A error library that supports tracking the call-site location of errors. Also features an anyhow-style `AnyError`.
 
-Usage
-
 ```rust
 use n0_error::{e, add_meta, Error, Result, StackResultExt, StdResultExt};
 
@@ -66,4 +64,20 @@ fn main() -> Result<()> {
     }
     Ok(())
 }
+
+// You can also use the macros with tuple structs or enums.
+// In this case the meta field will be added as the last field.
+
+#[add_meta]
+#[derive(Error)]
+#[display("tuple fail ({_0})")]
+struct TupleStruct(u32);
+
+#[add_meta]
+#[derive(Error)]
+enum TupleEnum {
+    #[display("io failed")]
+    Io(#[error(source, std_err)] std::io::Error),
+}
+
 ```

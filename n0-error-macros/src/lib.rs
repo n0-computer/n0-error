@@ -227,9 +227,6 @@ impl<'a> VariantInfo<'a> {
         }
         None
     }
-    fn fields(&self) -> &Vec<FieldInfo<'_>> {
-        &self.fields
-    }
 
     fn field_binding_idents(&self) -> impl Iterator<Item = Ident> + '_ {
         self.fields.iter().map(|f| match f.ident {
@@ -398,7 +395,13 @@ impl<'a> VariantInfo<'a> {
                         .iter()
                         .zip(binds.iter())
                         .map(|(f, b)| match f.ident {
-                            FieldIdent::Named(id) => quote! { #id: #b },
+                            FieldIdent::Named(id) => {
+                                if *id == *b {
+                                    quote! { #id }
+                                } else {
+                                    quote! { #id: #b }
+                                }
+                            }
                             FieldIdent::Unnamed(_) => unreachable!(),
                         });
                     quote! { Self::#v_ident { #( #pairs ),* } }
