@@ -8,6 +8,7 @@ use crate::{
 mod util;
 
 #[test]
+#[cfg(feature = "anyhow")]
 fn test_anyhow_compat() -> Result {
     fn ok() -> anyhow::Result<()> {
         Ok(())
@@ -21,7 +22,6 @@ enum MyError {
     #[display("A failure")]
     A {},
 }
-
 #[test]
 fn test_whatever() {
     let _guard = wait_sequential();
