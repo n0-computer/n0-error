@@ -217,15 +217,15 @@ enum FieldIdent<'a> {
 
 impl<'a> VariantInfo<'a> {
     fn transparent(&self) -> Option<&Ident> {
-        if let Some(src) = &self.source {
-            if src.transparent {
-                return match src.field.ident {
-                    FieldIdent::Named(ident) => Some(ident),
-                    FieldIdent::Unnamed(_) => None,
-                };
+        let source = self.source.as_ref()?;
+        if !source.transparent {
+            None
+        } else {
+            match source.field.ident {
+                FieldIdent::Named(ident) => Some(ident),
+                FieldIdent::Unnamed(_) => None,
             }
         }
-        None
     }
 
     fn field_binding_idents(&self) -> impl Iterator<Item = Ident> + '_ {
@@ -260,7 +260,7 @@ impl<'a> VariantInfo<'a> {
         attrs: &[Attribute],
         top: &TopAttrs,
     ) -> Result<VariantInfo<'a>, syn::Error> {
-        let (kind, fields_vec): (Kind, Vec<FieldInfo>) = match fields {
+        let (kind, fields): (Kind, Vec<FieldInfo>) = match fields {
             Fields::Named(ref fields) => (
                 Kind::Named,
                 fields
@@ -280,9 +280,6 @@ impl<'a> VariantInfo<'a> {
                     .collect::<Result<_, _>>()?,
             ),
         };
-        let fields = fields_vec;
-
-        // For tuple fields, meta is only considered when explicitly marked via #[error(meta)]
 
         if fields.iter().filter(|f| f.opts.source).count() > 1 {
             return Err(err(
@@ -880,5 +877,3 @@ fn get_doc_or_display(attrs: &[Attribute]) -> Result<Option<proc_macro2::TokenSt
 fn err(ident: impl ToTokens, err: impl ToString) -> syn::Error {
     syn::Error::new_spanned(ident, err.to_string())
 }
-
-// (no longer used) – tuple meta fields require explicit #[error(meta)]
