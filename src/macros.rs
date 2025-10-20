@@ -7,17 +7,17 @@
 macro_rules! e {
     // No fields
     ($($err:tt)::+) => {
-        $($err)::+ { meta: ::n0_error::Meta::default() }
+        $($err)::+ { meta: $crate::Meta::default() }
     };
 
     // Single expression: treat as source
     ($($err:tt)::+ , $source:expr) => {
-        $($err)::+ { source: $source, meta: ::n0_error::Meta::default() }
+        $($err)::+ { source: $source, meta: $crate::Meta::default() }
     };
 
     // Fields and values
     ($($err:tt)::+ { $($body:tt)* }) => {
-        $($err)::+ { meta: ::n0_error::Meta::default(), $($body)* }
+        $($err)::+ { meta: $crate::Meta::default(), $($body)* }
     };
 }
 
@@ -27,7 +27,7 @@ macro_rules! e {
 #[macro_export]
 macro_rules! Err {
     ($($tt:tt)*) => {
-        Err(e!($($tt)*))
+        ::core::result::Result::Err($crate::e!($($tt)*))
     }
 }
 
@@ -38,16 +38,16 @@ macro_rules! Err {
 #[macro_export]
 macro_rules! whatever {
     ($fmt:literal$(, $($arg:expr),* $(,)?)?) => {
-        return core::result::Result::Err({
+        return ::core::result::Result::Err({
             $crate::format_err!($fmt$(, $($arg),*)*)
         });
     };
     ($source:expr, $fmt:literal$(, $($arg:expr),* $(,)?)*) => {
         match $source {
-            core::result::Result::Ok(v) => v,
-            core::result::Result::Err(e) => {
-                let context = format!($fmt$(, $($arg),*)*);
-                return core::result::Result::Err(
+            ::core::result::Result::Ok(v) => v,
+            ::core::result::Result::Err(e) => {
+                let context = ::std::format!($fmt$(, $($arg),*)*);
+                return ::core::result::Result::Err(
                     $crate::anyerr!(e).context(context)
                 );
             }
@@ -60,7 +60,7 @@ macro_rules! whatever {
 macro_rules! format_err {
     ($fmt:literal$(, $($arg:expr),* $(,)?)?) => {
         $crate::AnyError::from_display(
-            format!($fmt$(, $($arg),*)*),
+            ::std::format!($fmt$(, $($arg),*)*),
         )
     };
 }
