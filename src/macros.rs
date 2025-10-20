@@ -21,6 +21,16 @@ macro_rules! e {
     };
 }
 
+/// Constructs an error enum/struct value and wraps it in `Err(err)`.
+///
+/// See [`e`] for supported syntax.
+#[macro_export]
+macro_rules! Err {
+    ($($tt:tt)*) => {
+        Err(e!($($tt)*))
+    }
+}
+
 /// Propagates an error, adding formatted context.
 ///
 /// - `whatever!("msg")` returns `Err(format_err!(...))`.

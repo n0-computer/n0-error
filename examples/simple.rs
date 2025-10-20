@@ -1,6 +1,6 @@
 use std::io;
 
-use n0_error::{StackError, e, meta};
+use n0_error::{Err, StackError, e, meta};
 
 use self::error::CopyError;
 use crate::error::{InvalidArgsError, OperationError};
@@ -25,6 +25,11 @@ fn main() {
     // let err = CopyError!(InvalidArgs { source: err });
     let err = e!(OperationError::Copy { source: err });
     print(err);
+}
+
+fn _some_fn() -> Result<(), CopyError> {
+    // Err! macro works like e! but wraps in Err
+    Err!(CopyError::Read, io::Error::other("yada"))
 }
 
 fn operation() -> Result<(), OperationError> {
@@ -65,13 +70,6 @@ pub mod error {
     pub enum OperationError {
         /// Failed to copy
         Copy { source: CopyError },
-    }
-
-    #[macro_export]
-    macro_rules! CopyError {
-        ($variant:ident { $($rest:tt)* }) => {
-            e!(CopyError::$variant { $($rest)* })
-        };
     }
 
     #[n0_error::add_meta]
