@@ -12,7 +12,8 @@ use syn::{
 /// If the struct or an enum variant is currently a unit kind, it will be converted
 /// to a named-field kind.
 ///
-/// Tuple structs or variants are not supported.
+/// Tuple structs or variants are supported: for tuple items, the `meta`
+/// field is appended as the last unnamed field.
 #[proc_macro_attribute]
 pub fn add_meta(_attr: TokenStream, item: TokenStream) -> TokenStream {
     match add_meta_inner(parse_macro_input!(item as syn::Item)) {
@@ -38,9 +39,10 @@ fn add_meta_inner(mut input: syn::Item) -> Result<proc_macro2::TokenStream, syn:
 }
 
 fn add_meta_field(fields: &mut Fields) -> Result<(), syn::Error> {
-    let field = parse_quote! { meta: ::n0_error::Meta };
     match fields {
         Fields::Named(fields) => {
+            let field: syn::Field =
+                parse_quote! { #[doc = "Captured call-site metadata"] meta: ::n0_error::Meta };
             fields.named.push(field);
             Ok(())
         }
@@ -49,14 +51,18 @@ fn add_meta_field(fields: &mut Fields) -> Result<(), syn::Error> {
                 brace_token: Default::default(),
                 named: Default::default(),
             };
+            let field: syn::Field =
+                parse_quote! { #[doc = "Captured call-site metadata"] meta: ::n0_error::Meta };
             named.named.push(field);
             *fields = Fields::Named(named);
             Ok(())
         }
-        Fields::Unnamed(_) => Err(err(
-            &fields,
-            "#[add_meta] does not support tuple variants or structs",
-        )),
+        Fields::Unnamed(fields) => {
+            // Append meta as last unnamed field for tuple items and mark it explicitly
+            let field: syn::Field = parse_quote! { #[doc = "Captured call-site metadata"] #[error(meta)] ::n0_error::Meta };
+            fields.unnamed.push(field);
+            Ok(())
+        }
     }
 }
 
@@ -102,23 +108,21 @@ fn derive_error_inner(input: DeriveInput) -> Result<proc_macro2::TokenStream, da
     }
 }
 
-struct SourceField {
-    ident: Ident,
+struct SourceField<'a> {
     kind: SourceKind,
     transparent: bool,
+    field: FieldInfo<'a>,
 }
 
-impl SourceField {
-    fn expr_error_ref(&self) -> proc_macro2::TokenStream {
-        let ident = &self.ident;
+impl<'a> SourceField<'a> {
+    fn expr_error_ref(&self, ident: &Ident) -> proc_macro2::TokenStream {
         match self.kind {
             SourceKind::Std => quote! { Some(::n0_error::ErrorRef::std(#ident)) },
             SourceKind::Stack => quote! { Some(::n0_error::ErrorRef::stack(#ident)) },
         }
     }
 
-    fn expr_error_std(&self) -> proc_macro2::TokenStream {
-        let ident = &self.ident;
+    fn expr_error_std(&self, ident: &Ident) -> proc_macro2::TokenStream {
         match self.kind {
             SourceKind::Std => quote! { Some(#ident as &dyn ::std::error::Error) },
             SourceKind::Stack => quote! { Some(::n0_error::StackError::as_std(#ident)) },
@@ -145,6 +149,8 @@ struct FieldAttrs {
     from: bool,
     std_err: bool,
     stack_err: bool,
+    /// Marks this field as the metadata field.
+    meta: bool,
 }
 
 #[derive(Default, Clone, Copy, FromAttributes)]
@@ -157,59 +163,98 @@ struct VariantAttrs {
 struct VariantInfo<'a> {
     ident: Ident,
     fields: Vec<FieldInfo<'a>>,
+    kind: Kind,
     display: Option<proc_macro2::TokenStream>,
-    source: Option<SourceField>,
-    from_field: Option<&'a Field>,
+    source: Option<SourceField<'a>>,
+    /// The field that is used for From<..> impls
+    from: Option<FieldInfo<'a>>,
+    /// The meta field if present.
+    meta: Option<FieldInfo<'a>>,
 }
 
+#[derive(Clone)]
 struct FieldInfo<'a> {
     field: &'a Field,
     opts: FieldAttrs,
+    ident: FieldIdent<'a>,
 }
 
 impl<'a> FieldInfo<'a> {
-    fn from_field(field: &'a Field) -> Result<Self, syn::Error> {
+    fn from_named(field: &'a Field) -> Result<Self, syn::Error> {
         let opts = FieldAttrs::from_attributes(&field.attrs)?;
-        Ok(Self { field, opts })
+        let ident = FieldIdent::Named(field.ident.as_ref().unwrap());
+        Ok(Self { field, opts, ident })
     }
+    fn from_unnamed(index: usize, field: &'a Field) -> Result<Self, syn::Error> {
+        let opts = FieldAttrs::from_attributes(&field.attrs)?;
+        let ident = FieldIdent::Unnamed(index);
+        Ok(Self { field, opts, ident })
+    }
+    fn is_meta(&self) -> bool {
+        if self.opts.meta {
+            return true;
+        }
+        if let FieldIdent::Named(ident) = self.ident {
+            if ident == "meta" {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Named,
+    Tuple,
+}
+
+#[derive(Clone, Copy)]
+enum FieldIdent<'a> {
+    Named(&'a Ident),
+    Unnamed(usize),
 }
 
 impl<'a> VariantInfo<'a> {
     fn transparent(&self) -> Option<&Ident> {
-        match &self.source {
-            Some(field) if field.transparent => Some(&field.ident),
-            _ => None,
+        if let Some(src) = &self.source {
+            if src.transparent {
+                return match src.field.ident {
+                    FieldIdent::Named(ident) => Some(ident),
+                    FieldIdent::Unnamed(_) => None,
+                };
+            }
         }
+        None
     }
     fn fields(&self) -> &Vec<FieldInfo<'_>> {
         &self.fields
     }
 
-    fn field_idents(&self) -> impl Iterator<Item = &Ident> {
-        self.fields()
-            .iter()
-            .map(|f| f.field.ident.as_ref().unwrap())
+    fn field_binding_idents(&self) -> impl Iterator<Item = Ident> + '_ {
+        self.fields.iter().map(|f| match f.ident {
+            FieldIdent::Named(ident) => ident.clone(),
+            FieldIdent::Unnamed(i) => {
+                syn::Ident::new(&format!("_{}", i), proc_macro2::Span::call_site())
+            }
+        })
     }
 
-    fn meta(&self) -> Option<&Field> {
-        self.fields()
-            .iter()
-            .map(|f| &f.field)
-            .copied()
-            .find(|f| f.ident.as_ref().unwrap() == "meta")
+    fn has_meta(&self) -> bool {
+        self.meta.is_some()
     }
 
-    fn fields_without_meta(&self) -> impl Iterator<Item = &Field> {
-        self.fields()
-            .iter()
-            .map(|f| &f.field)
-            .copied()
-            .filter(|f| f.ident.as_ref().unwrap() != "meta")
+    fn fields_without_meta(&self) -> impl Iterator<Item = &FieldInfo<'a>> {
+        self.fields.iter().filter(|f| !f.is_meta())
     }
 
-    fn field_idents_without_meta(&self) -> impl Iterator<Item = &Ident> {
-        self.fields_without_meta()
-            .map(|f| f.ident.as_ref().unwrap())
+    fn field_idents_without_meta(&self) -> impl Iterator<Item = Ident> + '_ {
+        self.fields_without_meta().map(|f| match f.ident {
+            FieldIdent::Named(ident) => ident.clone(),
+            FieldIdent::Unnamed(i) => {
+                syn::Ident::new(&format!("_{}", i), proc_macro2::Span::call_site())
+            }
+        })
     }
 
     fn parse(
@@ -218,14 +263,29 @@ impl<'a> VariantInfo<'a> {
         attrs: &[Attribute],
         top: &TopAttrs,
     ) -> Result<VariantInfo<'a>, syn::Error> {
-        let fields: Result<Vec<FieldInfo>, _> = match fields {
-            Fields::Named(ref fields) => fields.named.iter().map(FieldInfo::from_field).collect(),
-            Fields::Unit => Ok(vec![]),
-            Fields::Unnamed(ref fields) => {
-                fields.unnamed.iter().map(FieldInfo::from_field).collect()
-            }
+        let (kind, fields_vec): (Kind, Vec<FieldInfo>) = match fields {
+            Fields::Named(ref fields) => (
+                Kind::Named,
+                fields
+                    .named
+                    .iter()
+                    .map(FieldInfo::from_named)
+                    .collect::<Result<_, _>>()?,
+            ),
+            Fields::Unit => (Kind::Named, Vec::new()),
+            Fields::Unnamed(ref fields) => (
+                Kind::Tuple,
+                fields
+                    .unnamed
+                    .iter()
+                    .enumerate()
+                    .map(|(i, f)| FieldInfo::from_unnamed(i, f))
+                    .collect::<Result<_, _>>()?,
+            ),
         };
-        let fields = fields?;
+        let fields = fields_vec;
+
+        // For tuple fields, meta is only considered when explicitly marked via #[error(meta)]
 
         if fields.iter().filter(|f| f.opts.source).count() > 1 {
             return Err(err(
@@ -233,15 +293,16 @@ impl<'a> VariantInfo<'a> {
                 "Only one field per variant may have #[error(source)]",
             ));
         }
-        let source_field = fields.iter().find(|f| f.opts.source).or_else(|| {
-            fields.iter().find(|f| {
-                f.field
-                    .ident
-                    .as_ref()
-                    .map(|i| i == "source")
-                    .unwrap_or(false)
-            })
-        });
+        let source_field = fields
+            .iter()
+            .find(|f| f.opts.source)
+            .or_else(|| match kind {
+                Kind::Named => fields.iter().find(|f| match f.ident {
+                    FieldIdent::Named(name) => name == "source",
+                    _ => false,
+                }),
+                Kind::Tuple => None,
+            });
 
         let variant_attrs = VariantAttrs::from_attributes(attrs)?;
         if variant_attrs.transparent && source_field.is_none() {
@@ -255,37 +316,98 @@ impl<'a> VariantInfo<'a> {
         let source = match source_field.as_ref() {
             None => None,
             Some(field) => {
-                let ident = field
-                    .field
-                    .ident
-                    .clone()
-                    .ok_or_else(|| err(&field.field, "source fields must be named"))?;
                 let kind = if field.opts.std_err || (top.std_sources && !field.opts.stack_err) {
                     SourceKind::Std
                 } else {
                     SourceKind::Stack
                 };
+                let field = (*field).clone();
                 Some(SourceField {
-                    ident,
                     kind,
                     transparent: variant_attrs.transparent,
+                    field,
                 })
             }
         };
 
-        let from = fields
+        let from_field = fields
             .iter()
             .find(|f| f.opts.from)
             .or_else(|| top.from_sources.then(|| source_field).flatten());
-        let from = from.map(|f| f.field);
-
+        let from_field = from_field.cloned();
+        let meta_field = fields.iter().find(|f| f.is_meta()).cloned();
         Ok(VariantInfo {
             ident: ident.clone(),
             fields,
+            kind,
             display: get_doc_or_display(&attrs)?,
             source,
-            from_field: from,
+            from: from_field,
+            meta: meta_field,
         })
+    }
+
+    // Pattern helpers
+    fn spread_field(&self, field: &FieldInfo<'a>, token: &Ident) -> proc_macro2::TokenStream {
+        let v_ident = &self.ident;
+        match (self.kind, field.ident) {
+            (Kind::Named, FieldIdent::Named(ident)) => {
+                quote! { Self::#v_ident { #ident: #token, .. } }
+            }
+            (Kind::Tuple, FieldIdent::Unnamed(idx)) => {
+                let mut pats: Vec<proc_macro2::TokenStream> = Vec::with_capacity(self.fields.len());
+                for i in 0..self.fields.len() {
+                    if i == idx {
+                        pats.push(quote! { #token });
+                    } else {
+                        pats.push(quote! { _ });
+                    }
+                }
+                quote! { Self::#v_ident ( #(#pats),* ) }
+            }
+            (Kind::Named, FieldIdent::Unnamed(_)) | (Kind::Tuple, FieldIdent::Named(_)) => {
+                unreachable!()
+            }
+        }
+    }
+
+    fn spread_empty(&self) -> proc_macro2::TokenStream {
+        let v_ident = &self.ident;
+        if self.fields.is_empty() {
+            quote! { Self::#v_ident }
+        } else {
+            match self.kind {
+                Kind::Named => quote! { Self::#v_ident { .. } },
+                Kind::Tuple => {
+                    let pats = std::iter::repeat(quote! { _ }).take(self.fields.len());
+                    quote! { Self::#v_ident ( #(#pats),* ) }
+                }
+            }
+        }
+    }
+
+    fn spread_all(&self, binds: &[Ident]) -> proc_macro2::TokenStream {
+        let v_ident = &self.ident;
+        if self.fields.is_empty() {
+            quote! { Self::#v_ident }
+        } else {
+            match self.kind {
+                Kind::Named => {
+                    let pairs = self
+                        .fields
+                        .iter()
+                        .zip(binds.iter())
+                        .map(|(f, b)| match f.ident {
+                            FieldIdent::Named(id) => quote! { #id: #b },
+                            FieldIdent::Unnamed(_) => unreachable!(),
+                        });
+                    quote! { Self::#v_ident { #( #pairs ),* } }
+                }
+                Kind::Tuple => {
+                    quote! { Self::#v_ident ( #( #binds ),* ) }
+                }
+            }
+        }
     }
 }
 
@@ -296,100 +418,107 @@ fn generate_enum_impls(
 ) -> proc_macro2::TokenStream {
     // StackError impl pieces
     let match_meta_arms = variants.iter().map(|vi| {
-        let v_ident = &vi.ident;
-        if vi.meta().is_some() {
-            let suffix = (vi.fields().len() > 1).then(|| quote!(, ..));
-            quote! { Self::#v_ident { meta #suffix } => Some(&meta) }
+        if let Some(meta_field) = &vi.meta {
+            let bind = syn::Ident::new("__meta", proc_macro2::Span::call_site());
+            let pat = vi.spread_field(meta_field, &bind);
+            quote! { #pat => Some(&#bind) }
         } else {
-            let inner = (!vi.fields().is_empty()).then(|| quote!(..));
-            quote! { Self::#v_ident { #inner } => None }
+            let pat = vi.spread_empty();
+            quote! { #pat => None }
         }
     });
 
-    let match_source_arms = variants.iter().map(|vi| {
-        let v_ident = &vi.ident;
-        match &vi.source {
-            Some(field) => {
-                let ident = &field.ident;
-                let expr = field.expr_error_ref();
-                quote! { Self::#v_ident { #ident, .. } => #expr, }
-            }
-            None => quote! { Self::#v_ident { .. } => None, },
+    let match_source_arms = variants.iter().map(|vi| match &vi.source {
+        Some(src) => {
+            let bind = syn::Ident::new("__src", proc_macro2::Span::call_site());
+            let pat = vi.spread_field(&src.field, &bind);
+            let expr = src.expr_error_ref(&bind);
+            quote! { #pat => #expr, }
+        }
+        None => {
+            let pat = vi.spread_empty();
+            quote! { #pat => None, }
         }
     });
 
-    let match_std_source_arms = variants.iter().map(|vi| {
-        let v_ident = &vi.ident;
-        match &vi.source {
-            Some(field) => {
-                let ident = &field.ident;
-                let expr = field.expr_error_std();
-                quote! { Self::#v_ident { #ident, .. } => #expr, }
-            }
-            None => quote! { Self::#v_ident { .. } => None, },
+    let match_std_source_arms = variants.iter().map(|vi| match &vi.source {
+        Some(src) => {
+            let bind = syn::Ident::new("__src", proc_macro2::Span::call_site());
+            let pat = vi.spread_field(&src.field, &bind);
+            let expr = src.expr_error_std(&bind);
+            quote! { #pat => #expr, }
+        }
+        None => {
+            let pat = vi.spread_empty();
+            quote! { #pat => None, }
         }
     });
 
     let match_transparent_arms = variants.iter().map(|vi| {
-        let v_ident = &vi.ident;
         let value = vi.transparent().is_some();
-        quote! { Self::#v_ident { .. } => #value }
+        let pat = vi.spread_empty();
+        quote! { #pat => #value }
     });
 
     let match_fmt_message_arms = variants.iter().map(|vi| {
         let v_ident = &vi.ident;
-        if let Some(ident) = vi.transparent() {
-            quote! { Self::#v_ident { #ident, .. } => { write!(f, "{}", #ident) } }
-        } else {
-            match &vi.display {
-                Some(expr) => {
-                    let mc = (!vi.fields().is_empty()).then(|| quote!(,));
-                    let names = vi.field_idents();
-                    quote! {
-                        #[allow(unused)]
-                        Self::#v_ident { #(#names),* #mc .. } => { #expr }
-                    }
-                }
-                None => {
-                    // Fallback to variant name
-                    let text = v_ident.to_string();
-                    quote! { Self::#v_ident { .. } => write!(f, #text) }
-                }
+        if let Some(trans_ident) = vi.transparent() {
+            return quote! { Self::#v_ident { #trans_ident, .. } => { write!(f, "{}", #trans_ident) } };
+        }
+        match &vi.display {
+            Some(expr) => {
+                let binds: Vec<Ident> = vi.field_binding_idents().collect();
+                let pat = vi.spread_all(&binds);
+                quote! { #[allow(unused)] #pat => { #expr } }
+            }
+            None => {
+                let text = v_ident.to_string();
+                let pat = vi.spread_empty();
+                quote! { #pat => write!(f, #text) }
             }
         }
     });
 
     let match_debug_arms = variants.iter().map(|vi| {
         let v_ident = &vi.ident;
-        let field_idents = vi.field_idents();
-        let print = field_idents.map(|ident| {
-            let ident_s = ident.to_string();
-            quote! { .field(#ident_s, #ident) }
-        });
-        let names = vi.field_idents();
         let v_name = v_ident.to_string();
-        quote! {
-            Self::#v_ident { #(#names),* } => {
-                f.debug_struct(#v_name)#(#print)*.finish()?;
-            }
-        }
+        let binds: Vec<Ident> = vi.field_binding_idents().collect();
+        let pat = vi.spread_all(&binds);
+        let labels: Vec<String> = vi.fields.iter().enumerate().map(|(i, f)| match f.ident { FieldIdent::Named(id) => id.to_string(), FieldIdent::Unnamed(_) => i.to_string() }).collect();
+        quote! { #pat => { let mut dbg = f.debug_struct(#v_name); #( dbg.field(#labels, &#binds); )*; dbg.finish()?; } }
     });
 
     // From impls for variants marked with #[from]
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let from_impls = variants.iter().filter_map(|vi| vi.from_field.map(|field| (vi, field))).map(|(vi, field)| {
+    let from_impls = variants.iter().filter_map(|vi| vi.from.as_ref().map(|field| (vi, field))).map(|(vi, field)| {
         let v_ident = &vi.ident;
-        let Field { ty, ident, .. } = &field;
-        let meta = vi
-            .meta()
-            .map(|_| quote!{ meta: ::n0_error::Meta::new() });
-        let comma = (meta.is_some() && vi.fields().len() > 1).then(|| quote!(,));
+        let ty = &field.field.ty;
+        let construct = match (vi.kind, field.ident) {
+            (Kind::Named, FieldIdent::Named(ident)) => {
+                let meta = vi.meta.as_ref().map(|_| quote!( meta: ::n0_error::Meta::new() ));
+                let comma = (meta.is_some() && vi.fields.len() > 1).then(|| quote!(,));
+                quote! { Self::#v_ident { #ident: source #comma #meta } }
+            }
+            (Kind::Tuple, FieldIdent::Unnamed(src_idx)) => {
+                let total = vi.fields.len();
+                let mut exprs: Vec<proc_macro2::TokenStream> = Vec::with_capacity(total);
+                for i in 0..total {
+                    if i == src_idx { exprs.push(quote!{ source }); }
+                    else if let Some(meta_field) = &vi.meta {
+                        if let FieldIdent::Unnamed(mi) = meta_field.ident { if mi == i { exprs.push(quote!{ ::n0_error::Meta::new() }); continue; } }
+                        exprs.push(quote!{ ::core::compile_error!("unsupported From impl: extra fields present") });
+                    } else {
+                        exprs.push(quote!{ ::core::compile_error!("unsupported From impl: extra fields present") });
+                    }
+                }
+                quote! { Self::#v_ident( #(#exprs),* ) }
+            }
+            _ => unreachable!(),
+        };
         quote! {
             impl #impl_generics ::core::convert::From<#ty> for #enum_ident #ty_generics #where_clause {
                 #[track_caller]
-                fn from(source: #ty) -> Self {
-                    Self::#v_ident { #ident: source #comma #meta }
-                }
+                fn from(source: #ty) -> Self { #construct }
             }
         }
     });
@@ -474,36 +603,75 @@ fn generate_struct_impl(
 ) -> proc_macro2::TokenStream {
     let constructor = {
         let params = info.fields_without_meta().map(|f| {
-            let ident = f.ident.as_ref().unwrap();
-            let ty = &f.ty;
-            quote! { #ident: #ty }
+            let ty = &f.field.ty;
+            match f.ident {
+                FieldIdent::Named(ident) => quote! { #ident: #ty },
+                FieldIdent::Unnamed(i) => {
+                    let arg = syn::Ident::new(&format!("_{}", i), proc_macro2::Span::call_site());
+                    quote! { #arg: #ty }
+                }
+            }
         });
         let names = info.field_idents_without_meta();
-        let meta = info.meta().map(|_| quote!(meta: ::n0_error::Meta::new()));
-        let comma = (meta.is_some() && info.fields().len() > 1).then(|| quote!(,));
+        let meta_named = info
+            .meta
+            .as_ref()
+            .map(|_| quote!(meta: ::n0_error::Meta::new()));
+        let meta_tuple = info.meta.as_ref().map(|_| quote!(::n0_error::Meta::new()));
+        let comma = (info.has_meta() && info.fields.len() > 1).then(|| quote!(,));
         let doc = format!("Creates a new [`{}`] error.", item_ident);
+        let construct = match info.kind {
+            Kind::Named => quote! { Self { #(#names),* #comma #meta_named } },
+            Kind::Tuple => quote! { Self( #(#names),* #comma #meta_tuple ) },
+        };
         quote! {
             #[doc = #doc]
             #[track_caller]
-            pub fn new(#(#params),*) -> Self {
-                Self { #(#names),* #comma #meta }
-            }
+            pub fn new(#(#params),*) -> Self { #construct }
         }
     };
-    let get_meta = if info.meta().is_some() {
-        quote!(Some(&self.meta))
+    let get_meta = if let Some(meta_field) = &info.meta {
+        match meta_field.ident {
+            FieldIdent::Named(ident) => quote!(Some(&self.#ident)),
+            FieldIdent::Unnamed(i) => {
+                let idx = syn::Index::from(i);
+                quote!(Some(&self.#idx))
+            }
+        }
     } else {
         quote! { None }
     };
 
     let get_error_source = match &info.source {
-        Some(field) => field.expr_error_ref(),
+        Some(src) => {
+            let bind = syn::Ident::new("__src", proc_macro2::Span::call_site());
+            let getter = match src.field.ident {
+                FieldIdent::Named(id) => quote! { let #bind = &self.#id; },
+                FieldIdent::Unnamed(i) => {
+                    let idx = syn::Index::from(i);
+                    quote! { let #bind = &self.#idx; }
+                }
+            };
+            let expr = src.expr_error_ref(&bind);
+            quote! {{ #getter #expr }}
+        }
         None => quote! { None },
     };
 
     let get_std_source = match &info.source {
+        Some(src) => {
+            let bind = syn::Ident::new("__src", proc_macro2::Span::call_site());
+            let getter = match src.field.ident {
+                FieldIdent::Named(id) => quote! { let #bind = &self.#id; },
+                FieldIdent::Unnamed(i) => {
+                    let idx = syn::Index::from(i);
+                    quote! { let #bind = &self.#idx; }
+                }
+            };
+            let expr = src.expr_error_std(&bind);
+            quote! {{ #getter #expr }}
+        }
         None => quote! { None },
-        Some(field) => field.expr_error_std(),
     };
 
     let is_transparent = info.transparent().is_some();
@@ -514,12 +682,14 @@ fn generate_struct_impl(
         } else {
             match &info.display {
                 Some(expr) => {
-                    let mc = (!info.fields().is_empty()).then(|| quote!(,));
-                    let names = info.field_idents();
-                    quote! {
-                        #[allow(unused)]
-                        let Self { #(#names),* #mc .. } = self;
-                        #expr
+                    let binds: Vec<Ident> = info.field_binding_idents().collect();
+                    match info.kind {
+                        Kind::Named => {
+                            quote! { #[allow(unused)] let Self { #( #binds ),* , .. } = self; #expr }
+                        }
+                        Kind::Tuple => {
+                            quote! { #[allow(unused)] let Self( #( #binds ),* ) = self; #expr }
+                        }
                     }
                 }
                 None => {
@@ -532,28 +702,66 @@ fn generate_struct_impl(
     };
 
     let get_debug = {
-        let print = info.field_idents().map(|ident| {
-            let ident_s = ident.to_string();
-            quote! { .field(#ident_s, &self.#ident) }
-        });
         let item_name = info.ident.to_string();
-        quote! {
-            f.debug_struct(#item_name)#(#print)*.finish()?;
+        let binds: Vec<Ident> = info.field_binding_idents().collect();
+        let labels: Vec<String> = info
+            .fields
+            .iter()
+            .enumerate()
+            .map(|(i, f)| match f.ident {
+                FieldIdent::Named(id) => id.to_string(),
+                FieldIdent::Unnamed(_) => i.to_string(),
+            })
+            .collect();
+        match info.kind {
+            Kind::Named => {
+                quote! { let Self { #( #binds ),* } = self; let mut dbg = f.debug_struct(#item_name); #( dbg.field(#labels, &#binds); )*; dbg.finish()?; }
+            }
+            Kind::Tuple => {
+                quote! { let Self( #( #binds ),* ) = self; let mut dbg = f.debug_struct(#item_name); #( dbg.field(#labels, &#binds); )*; dbg.finish()?; }
+            }
         }
     };
 
     // From impls for fields marked with #[error(from)] (or inferred via from_sources)
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let get_from = if let Some(field) = info.from_field {
-        let Field { ty, ident, .. } = &field;
-        let meta = info.meta().map(|_| quote!(meta: ::n0_error::Meta::new()));
-        let comma = (meta.is_some() && info.fields().len() > 1).then(|| quote!(,));
+    let get_from = if let Some(field) = &info.from {
+        let ty = &field.field.ty;
+        let construct = match (info.kind, field.ident) {
+            (Kind::Named, FieldIdent::Named(ident)) => {
+                let meta = info
+                    .meta
+                    .as_ref()
+                    .map(|_| quote!( meta: ::n0_error::Meta::new() ));
+                let comma = (meta.is_some() && info.fields.len() > 1).then(|| quote!(,));
+                quote! { Self { #ident: source #comma #meta } }
+            }
+            (Kind::Tuple, FieldIdent::Unnamed(src_idx)) => {
+                let total = info.fields.len();
+                let mut exprs: Vec<proc_macro2::TokenStream> = Vec::with_capacity(total);
+                for i in 0..total {
+                    if i == src_idx {
+                        exprs.push(quote! { source });
+                    } else if let Some(meta_field) = &info.meta {
+                        if let FieldIdent::Unnamed(mi) = meta_field.ident {
+                            if mi == i {
+                                exprs.push(quote! { ::n0_error::Meta::new() });
+                                continue;
+                            }
+                        }
+                        exprs.push(quote!{ ::core::compile_error!("unsupported From impl: extra fields present") });
+                    } else {
+                        exprs.push(quote!{ ::core::compile_error!("unsupported From impl: extra fields present") });
+                    }
+                }
+                quote! { Self( #(#exprs),* ) }
+            }
+            _ => unreachable!(),
+        };
         Some(quote! {
             impl #impl_generics ::core::convert::From<#ty> for #item_ident #ty_generics #where_clause {
                 #[track_caller]
-                fn from(source: #ty) -> Self {
-                    Self { #ident: source #comma #meta }
-                }
+                fn from(source: #ty) -> Self { #construct }
             }
         })
     } else {
@@ -669,3 +877,5 @@ fn get_doc_or_display(attrs: &[Attribute]) -> Result<Option<proc_macro2::TokenSt
 fn err(ident: impl ToTokens, err: impl ToString) -> syn::Error {
     syn::Error::new_spanned(ident, err.to_string())
 }
+
+// (no longer used) – tuple meta fields require explicit #[error(meta)]
