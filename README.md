@@ -1,5 +1,7 @@
 # n0-error
 
+**Experimental / Work in progress**
+
 A error library that supports tracking the call-site location of errors. Also features an anyhow-style `AnyError`.
 
 Usage
