@@ -94,8 +94,7 @@ impl<'a> ErrorRef<'a> {
         ErrorRef::Std(err, None)
     }
 
-    ///
-    pub fn std_with_meta(err: &'a dyn std::error::Error, meta: &'a Meta) -> ErrorRef<'a> {
+    pub(crate) fn std_with_meta(err: &'a dyn std::error::Error, meta: &'a Meta) -> ErrorRef<'a> {
         ErrorRef::Std(err, Some(meta))
     }
 

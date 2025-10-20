@@ -8,8 +8,7 @@
 #![doc = include_str!("../README.md")]
 #![deny(missing_docs)]
 
-pub use n0_error_macros::Error;
-pub use n0_error_macros::add_meta;
+pub use n0_error_macros::{Error, add_meta};
 
 extern crate self as n0_error;
 
