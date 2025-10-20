@@ -1,8 +1,44 @@
 use std::sync::OnceLock;
 
-#[derive(derive_more::Debug, derive_more::Display, Clone)]
+/// Wrapper around `std::panic::Location` used for display in reports.
+#[derive(derive_more::Debug, derive_more::Display, Clone, Copy)]
 #[debug("{_0:?}")]
 pub struct Location(&'static std::panic::Location<'static>);
+
+/// Captured metadata for an error creation site.
+///
+/// Currently this only contains the call-site [`Location`].
+#[derive(Debug)]
+pub struct Meta {
+    location: Option<Location>,
+}
+
+/// Creates new [`Meta`] capturing the caller location.
+#[track_caller]
+pub fn meta() -> Meta {
+    Meta::default()
+}
+
+impl Default for Meta {
+    #[track_caller]
+    fn default() -> Self {
+        Self {
+            location: location(),
+        }
+    }
+}
+
+impl Meta {
+    #[track_caller]
+    /// Creates new [`Meta`] capturing the caller location.
+    pub fn new() -> Self {
+        Self::default()
+    }
+    /// Returns the captured location.
+    pub fn location(&self) -> Option<&Location> {
+        self.location.as_ref()
+    }
+}
 
 #[cfg(test)]
 static BACKTRACE_ENABLED: OnceLock<std::sync::RwLock<bool>> = OnceLock::new();
@@ -16,7 +52,7 @@ pub fn backtrace_enabled() -> bool {
         matches!(
             std::env::var("RUST_BACKTRACE").as_deref(),
             Ok("1") | Ok("full")
-        )
+        ) || matches!(std::env::var("RUST_ERROR_LOCATION").as_deref(), Ok("1"))
     };
     #[cfg(test)]
     return *(BACKTRACE_ENABLED
@@ -38,9 +74,8 @@ pub fn set_backtrace_enabled(value: bool) {
     *inner = value;
 }
 
-#[doc(hidden)]
 #[track_caller]
-pub fn location() -> Option<Location> {
+fn location() -> Option<Location> {
     if backtrace_enabled() {
         Some(Location(std::panic::Location::caller()))
     } else {
