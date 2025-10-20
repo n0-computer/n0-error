@@ -195,6 +195,13 @@ impl From<anyhow::Error> for AnyError {
     }
 }
 
+impl From<std::io::Error> for AnyError {
+    #[track_caller]
+    fn from(value: std::io::Error) -> Self {
+        Self::from_std(value)
+    }
+}
+
 impl std::str::FromStr for AnyError {
     type Err = Infallible;
 
