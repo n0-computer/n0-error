@@ -23,7 +23,7 @@ pub trait StackError: fmt::Display + fmt::Debug + Send + Sync {
     fn as_std(&self) -> &(dyn std::error::Error + Send + Sync + 'static);
 
     /// Returns this error as a `dyn StackError`.
-    fn as_dyn(&self) -> &(dyn StackError);
+    fn as_dyn(&self) -> &dyn StackError;
 
     /// Returns metadata captured at creation time, if available.
     fn meta(&self) -> Option<&Meta>;
@@ -83,7 +83,7 @@ impl<T: StackError + Sized + 'static> StackErrorExt for T {}
 #[derive(Copy, Clone, Debug)]
 pub enum ErrorRef<'a> {
     /// Std error (no location info).
-    Std(&'a (dyn std::error::Error), Option<&'a Meta>),
+    Std(&'a dyn std::error::Error, Option<&'a Meta>),
     /// StackError (has location info).
     Stack(&'a dyn StackError),
 }

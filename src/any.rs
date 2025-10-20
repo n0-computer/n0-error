@@ -126,7 +126,7 @@ impl fmt::Debug for AnyError {
 }
 
 impl StackError for AnyError {
-    fn as_dyn(&self) -> &(dyn StackError) {
+    fn as_dyn(&self) -> &dyn StackError {
         self
     }
 

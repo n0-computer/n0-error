@@ -5,11 +5,9 @@ deny = []
 [licenses]
 allow = [
     "Apache-2.0",
-    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
     "MIT",
-    "Zlib",
     "Unicode-3.0",
-    "Unlicense",                      # https://unlicense.org/
 ]
 
 

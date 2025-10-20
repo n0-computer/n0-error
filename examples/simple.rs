@@ -13,7 +13,6 @@ fn main() {
     // let err = e!(CopyError::BadRequest { missing: 32 });
     let err = CopyError::BadRequest {
         missing: 32,
-        foo: 32,
         meta: meta(),
     };
 
@@ -95,7 +94,6 @@ pub mod error {
         #[display("Bad request - missing characters: {missing} {}", missing * 2)]
         BadRequest {
             missing: usize,
-            foo: usize,
         },
         #[error(transparent)]
         InvalidArgs {
