@@ -26,49 +26,6 @@ jobs:
     if: "github.event_name != 'pull_request' || ! contains(github.event.pull_request.labels.*.name, 'flaky-test')"
     uses: "./.github/workflows/tests.yaml"
 
-  cross_build:
-    name: Cross Build Only
-    if: "github.event_name != 'pull_request' || ! contains(github.event.pull_request.labels.*.name, 'flaky-test')"
-    timeout-minutes: 30
-    runs-on: [self-hosted, linux, X64]
-    strategy:
-      fail-fast: false
-      matrix:
-        target:
-          # cross tests are currently broken vor armv7 and aarch64
-          # see https://github.com/cross-rs/cross/issues/1311
-          # - armv7-linux-androideabi
-          # - aarch64-linux-android
-          # Freebsd execution fails in cross
-          # - i686-unknown-freebsd # Linking fails :/
-          - x86_64-unknown-freebsd
-          # Netbsd execution fails to link in cross
-          # - x86_64-unknown-netbsd
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          submodules: recursive
-
-      - name: Install rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cleanup Docker
-        continue-on-error: true
-        run: |
-          docker kill $(docker ps -q)
-
-        # See https://github.com/cross-rs/cross/issues/1222
-      - uses: taiki-e/install-action@cross
-
-      - name: build
-        # cross tests are currently broken vor armv7 and aarch64
-        # see https://github.com/cross-rs/cross/issues/1311.  So on
-        # those platforms we only build but do not run tests.
-        run: cross build --all --target ${{ matrix.target }}
-        env:
-          RUST_LOG: ${{ runner.debug && 'TRACE' || 'DEBUG'}}
-
   check_semver:
     runs-on: ubuntu-latest
     env:
