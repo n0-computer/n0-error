@@ -31,6 +31,9 @@ pub trait StackError: fmt::Display + fmt::Debug + Send + Sync {
     /// Returns the next source in the chain, if any.
     fn source(&self) -> Option<ErrorRef<'_>>;
 
+    /// Returns the next source in the chain, if any.
+    fn fmt_message(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result;
+
     /// Returns whether this error is transparent and should be skipped in reports.
     fn is_transparent(&self) -> bool;
 
@@ -139,6 +142,14 @@ impl<'a> ErrorRef<'a> {
     pub(crate) fn fmt_location(&self, f: &mut Formatter) -> fmt::Result {
         fmt_location(self.meta().and_then(|m| m.location()), f)
     }
+
+    /// Formats the error message.
+    pub fn fmt_message(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            ErrorRef::Std(error, _) => fmt::Display::fmt(error, f),
+            ErrorRef::Stack(error) => error.fmt_message(f),
+        }
+    }
 }
 
 impl<'a> fmt::Display for ErrorRef<'a> {
@@ -160,9 +171,10 @@ pub struct Report<'a> {
 
 impl<'a> Report<'a> {
     pub(crate) fn new(inner: &'a dyn StackError) -> Self {
+        let location = backtrace_enabled();
         Self {
             inner,
-            location: false,
+            location,
             sources: None,
         }
     }
@@ -185,65 +197,57 @@ impl<'a> Report<'a> {
     }
 
     /// Prints the error's sources.
-    pub fn sources(mut self, format: SourceFormat) -> Self {
-        self.sources = Some(format);
+    pub fn sources(mut self, format: Option<SourceFormat>) -> Self {
+        self.sources = format;
         self
-    }
-
-    /// Formats the report via a [`Formatter`].
-    pub fn format(&self, f: &mut Formatter) -> fmt::Result {
-        fmt::Display::fmt(self, f)
-    }
-
-    /// Formats only the location.
-    pub fn fmt_location(&'a self, f: &mut Formatter) -> fmt::Result {
-        match self.inner.as_dyn().meta().and_then(|m| m.location()) {
-            None => Ok(()),
-            Some(location) => {
-                write!(f, " (at {})", location)
-            }
-        }
-    }
-
-    /// Formats only the sources.
-    pub fn fmt_sources(&'a self, f: &mut Formatter, format: SourceFormat) -> fmt::Result {
-        let chain = self.inner.as_dyn().sources();
-        let mut chain = chain
-            // We skip errors marked as transparent.
-            .filter(|s| !s.is_transparent())
-            .enumerate()
-            .peekable();
-        if chain.peek().is_some() && matches!(format, SourceFormat::MultiLine { .. }) {
-            writeln!(f, "\nCaused by:")?;
-        }
-        while let Some((i, item)) = chain.next() {
-            match format {
-                SourceFormat::OneLine => {
-                    write!(f, ": {item}")?;
-                }
-                SourceFormat::MultiLine { location } => {
-                    write!(f, "    {i}: {item}")?;
-                    if location {
-                        item.fmt_location(f)?;
-                    }
-                    if chain.peek().is_some() {
-                        writeln!(f)?;
-                    }
-                }
-            }
-        }
-        Ok(())
     }
 }
 
 impl<'a> fmt::Display for Report<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.inner)?;
-        if self.location {
-            self.fmt_location(f)?;
-        }
-        if let Some(format) = self.sources {
-            self.fmt_sources(f, format)?;
+        match self.sources {
+            None => {
+                let item = self
+                    .inner
+                    .stack()
+                    .find(|item| !item.is_transparent())
+                    .unwrap_or_else(|| self.inner.as_ref());
+                item.fmt_message(f)?;
+            }
+            Some(format) => {
+                let mut stack = self
+                    .inner
+                    .stack()
+                    .filter(|s| self.location || !s.is_transparent())
+                    .peekable();
+                let mut is_first = true;
+                while let Some(item) = stack.next() {
+                    match format {
+                        SourceFormat::OneLine => {
+                            if !is_first {
+                                write!(f, ": ")?;
+                            }
+                            item.fmt_message(f)?;
+                        }
+                        SourceFormat::MultiLine { location } => {
+                            if !is_first {
+                                write!(f, "    ")?;
+                            }
+                            item.fmt_message(f)?;
+                            if location {
+                                item.fmt_location(f)?;
+                            }
+                            if stack.peek().is_some() {
+                                writeln!(f)?;
+                                if is_first {
+                                    writeln!(f, "Caused by:")?;
+                                }
+                            }
+                        }
+                    }
+                    is_first = false;
+                }
+            }
         }
         Ok(())
     }
@@ -251,7 +255,7 @@ impl<'a> fmt::Display for Report<'a> {
 
 fn fmt_location(location: Option<&Location>, f: &mut Formatter) -> fmt::Result {
     if let Some(location) = location {
-        write!(f, " (at {})", location)?;
+        write!(f, " ({})", location)?;
     }
     Ok(())
 }

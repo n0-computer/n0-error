@@ -1,4 +1,4 @@
-use std::sync::OnceLock;
+use std::{fmt, sync::OnceLock};
 
 /// Wrapper around `std::panic::Location` used for display in reports.
 #[derive(derive_more::Debug, derive_more::Display, Clone, Copy)]
@@ -8,9 +8,27 @@ pub struct Location(&'static std::panic::Location<'static>);
 /// Captured metadata for an error creation site.
 ///
 /// Currently this only contains the call-site [`Location`].
-#[derive(Debug)]
 pub struct Meta {
     location: Option<Location>,
+}
+
+impl fmt::Display for Meta {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(location) = self.location.as_ref() {
+            write!(f, "{location}")?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Debug for Meta {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Meta")?;
+        if let Some(location) = self.location.as_ref() {
+            write!(f, "({location})")?;
+        }
+        Ok(())
+    }
 }
 
 /// Creates new [`Meta`] capturing the caller location.

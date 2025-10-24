@@ -100,11 +100,8 @@ impl AnyError {
 
 impl fmt::Display for AnyError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_ref())?;
-        if f.alternate() {
-            self.report().fmt_sources(f, SourceFormat::OneLine)?;
-        }
-        Ok(())
+        let sources = f.alternate().then_some(SourceFormat::OneLine);
+        write!(f, "{}", self.report().sources(sources))
     }
 }
 
@@ -120,7 +117,7 @@ impl fmt::Debug for AnyError {
                 }
             }
         } else {
-            self.report().full().format(f)
+            write!(f, "{}", self.report().full())
         }
     }
 }
@@ -156,6 +153,13 @@ impl StackError for AnyError {
         match &self.0 {
             Inner::Stack(error) => ErrorRef::Stack(error.deref()),
             Inner::Std(error, meta) => ErrorRef::std_with_meta(error.as_ref(), meta),
+        }
+    }
+
+    fn fmt_message(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            Inner::Stack(error) => error.fmt_message(f),
+            Inner::Std(error, _) => fmt::Display::fmt(error, f),
         }
     }
 }
