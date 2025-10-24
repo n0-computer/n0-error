@@ -490,7 +490,7 @@ fn generate_enum_impls(
                 quote! { #pat => { #expr } }
             }
             None => {
-                let text = v_ident.to_string();
+                let text = format!("{}::{}", enum_ident, v_ident);
                 let pat = vi.spread_empty();
                 quote! { #pat => write!(f, #text) }
             }

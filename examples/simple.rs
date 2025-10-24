@@ -1,6 +1,6 @@
 use std::io;
 
-use n0_error::{Err, StackError, e, meta};
+use n0_error::{StackError, e, meta};
 
 use self::error::CopyError;
 use crate::error::{InvalidArgsError, OperationError};
@@ -29,7 +29,7 @@ fn main() {
 
 fn _some_fn() -> Result<(), CopyError> {
     // Err! macro works like e! but wraps in Err
-    Err!(CopyError::Read, io::Error::other("yada"))
+    Err(e!(CopyError::Read, io::Error::other("yada")))
 }
 
 fn operation() -> Result<(), OperationError> {
