@@ -74,7 +74,7 @@ macro_rules! format_err {
 macro_rules! ensure_e {
     ($predicate:expr, $($tt:tt)*) => {
         if !$predicate {
-            $crate::bail!($($tt)*)
+            $crate::bail_e!($($tt)*)
         }
     };
 }
