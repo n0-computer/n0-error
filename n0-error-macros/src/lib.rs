@@ -265,7 +265,7 @@ impl<'a> VariantInfo<'a> {
     ) -> Result<VariantInfo<'a>, syn::Error> {
         let variant_attrs = VariantAttrs::from_attributes(attrs)?;
         let display = get_doc_or_display(&attrs)?;
-        // TODO: enable this but only for #[display] not for doc commments
+        // TODO: enable this but only for #[display] not for doc comments
         // if display.is_some() && variant_attrs.transparent {
         //     return Err(err(
         //         ident,
@@ -460,7 +460,7 @@ fn generate_enum_impls(
 
     let match_std_source_arms = variants.iter().map(|vi| match &vi.source {
         Some(src) => {
-            let bind = syn::Ident::new("__src", Span::call_site());
+            let bind = syn::Ident::new("source", Span::call_site());
             let pat = vi.spread_field(&src.field, &bind);
             let expr = src.expr_error_std(&bind);
             quote! { #pat => #expr, }
@@ -477,39 +477,29 @@ fn generate_enum_impls(
         quote! { #pat => #value }
     });
 
-    let match_fmt_message_arms = variants.iter().map(|vi| {
-        let v_ident = &vi.ident;
-        // if vi.transparent().is_some() {
-        //     let pat = vi.spread_empty();
-        //     quote! { #pat => ::n0_error::StackError::source(self).unwrap().fmt_message(f) }
-        // } else {
-        match &vi.display {
-            Some(expr) => {
-                let binds: Vec<Ident> = vi.field_binding_idents().collect();
-                let pat = vi.spread_all(&binds);
-                quote! { #pat => { #expr } }
-            }
-            None => {
-                let text = format!("{}::{}", enum_ident, v_ident);
-                let pat = vi.spread_empty();
-                quote! { #pat => write!(f, #text) }
-            }
+    let match_fmt_message_arms = variants.iter().map(|vi| match &vi.display {
+        Some(expr) => {
+            let binds: Vec<Ident> = vi.field_binding_idents().collect();
+            let pat = vi.spread_all(&binds);
+            quote! { #pat => { #expr } }
         }
-        // }
+        None => {
+            let text = format!("{}::{}", enum_ident, vi.ident);
+            let pat = vi.spread_empty();
+            quote! { #pat => write!(f, #text) }
+        }
     });
 
     let match_debug_arms = variants.iter().map(|vi| {
-        let v_ident = &vi.ident;
-        let v_name = v_ident.to_string();
+        let v_name = vi.ident.to_string();
         let binds: Vec<Ident> = vi.field_binding_idents().collect();
         let pat = vi.spread_all(&binds);
         let labels: Vec<String> = vi
             .fields
             .iter()
-            .enumerate()
-            .map(|(i, f)| match f.ident {
+            .map(|f| match f.ident {
                 FieldIdent::Named(id) => id.to_string(),
-                FieldIdent::Unnamed(_) => i.to_string(),
+                FieldIdent::Unnamed(i) => i.to_string(),
             })
             .collect();
         quote! {
@@ -520,7 +510,7 @@ fn generate_enum_impls(
         }
     });
 
-    // From impls for variants marked with #[from]
+    // From impls for variant fields marked with #[from]
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let from_impls = variants.iter().filter_map(|vi| vi.from.as_ref().map(|field| (vi, field))).map(|(vi, field)| {
         let v_ident = &vi.ident;
@@ -677,7 +667,7 @@ fn generate_struct_impl(
 
     let get_error_source = match &info.source {
         Some(src) => {
-            let bind = syn::Ident::new("__src", Span::call_site());
+            let bind = syn::Ident::new("source", Span::call_site());
             let getter = match src.field.ident {
                 FieldIdent::Named(id) => quote! { let #bind = &self.#id; },
                 FieldIdent::Unnamed(i) => {
@@ -749,10 +739,20 @@ fn generate_struct_impl(
             .collect();
         match info.kind {
             Kind::Named => {
-                quote! { let Self { #( #binds ),* } = self; let mut dbg = f.debug_struct(#item_name); #( dbg.field(#labels, &#binds); )*; dbg.finish()?; }
+                quote! {
+                    let Self { #( #binds ),* } = self;
+                    let mut dbg = f.debug_struct(#item_name);
+                    #( dbg.field(#labels, &#binds); )*;
+                    dbg.finish()?;
+                }
             }
             Kind::Tuple => {
-                quote! { let Self( #( #binds ),* ) = self; let mut dbg = f.debug_struct(#item_name); #( dbg.field(#labels, &#binds); )*; dbg.finish()?; }
+                quote! {
+                    let Self( #( #binds ),* ) = self;
+                    let mut dbg = f.debug_struct(#item_name);
+                    #( dbg.field(#labels, &#binds); )*;
+                    dbg.finish()?;
+                }
             }
         }
     };
