@@ -180,7 +180,12 @@
 <a href="#179" id="179">179</a>
 <a href="#180" id="180">180</a>
 <a href="#181" id="181">181</a>
-<a href="#182" id="182">182</a></pre></div><pre class="rust"><code><span class="doccomment">/// Constructs an error enum/struct value while automatically filling `meta: Meta`.
+<a href="#182" id="182">182</a>
+<a href="#183" id="183">183</a>
+<a href="#184" id="184">184</a>
+<a href="#185" id="185">185</a>
+<a href="#186" id="186">186</a>
+<a href="#187" id="187">187</a></pre></div><pre class="rust"><code><span class="doccomment">/// Constructs an error enum/struct value while automatically filling `meta: Meta`.
 ///
 /// - `e!(MyError::Variant)` constructs `MyError::Variant { meta: Meta::default() }`.
 /// - `e!(MyError::Variant, source)` constructs `MyError::Variant { source, meta: Meta::default() }`.
@@ -195,6 +200,11 @@
     <span class="comment">// Single expression: treat as source
     </span>($(<span class="macro-nonterminal">$err</span>:tt)::+ , <span class="macro-nonterminal">$source</span>:expr) =&gt; {
         $(<span class="macro-nonterminal">$err</span>)::+ { source: <span class="macro-nonterminal">$source</span>, meta: <span class="macro-nonterminal">$crate::Meta::default</span>() }
+    };
+
+    <span class="comment">// Fields and values plus source
+    </span>($(<span class="macro-nonterminal">$err</span>:tt)::+ { $(<span class="macro-nonterminal">$body</span>:tt)* }, <span class="macro-nonterminal">$source</span>:expr) =&gt; {
+        $(<span class="macro-nonterminal">$err</span>)::+ { meta: <span class="macro-nonterminal">$crate::Meta::default</span>(), source: <span class="macro-nonterminal">$source</span>, $(<span class="macro-nonterminal">$body</span>)* }
     };
 
     <span class="comment">// Fields and values
