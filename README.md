@@ -5,20 +5,20 @@
 A error library that supports tracking the call-site location of errors. Also features an anyhow-style `AnyError`.
 
 ```rust
-use n0_error::{e, add_meta, Error, Result, StackResultExt, StdResultExt};
+use n0_error::{e, add_meta, StackError, Result, StackResultExt, StdResultExt};
 
 // Adds a `meta` field to all variants to track call-site error location.
 #[add_meta]
 // Derives the various impls for our error.
-#[derive(Error)]
+#[derive(StackError)]
 // Automatically create From impls from the error sources
 #[error(from_sources)]
 enum MyError {
     // A custom validation error
-    #[display("bad input: {count}")]
+    #[error("bad input: {count}")]
     BadInput { count: usize },
     // Wrap a std::io::Error as a source (std error)
-    #[display("IO error")]
+    #[error("IO error")]
     Io {
         #[error(std_err)]
         source: std::io::Error,
@@ -69,14 +69,14 @@ fn main() -> Result<()> {
 // In this case the meta field will be added as the last field.
 
 #[add_meta]
-#[derive(Error)]
-#[display("tuple fail ({_0})")]
+#[derive(StackError)]
+#[error("tuple fail ({_0})")]
 struct TupleStruct(u32);
 
 #[add_meta]
-#[derive(Error)]
+#[derive(StackError)]
 enum TupleEnum {
-    #[display("io failed")]
+    #[error("io failed")]
     Io(#[error(source, std_err)] std::io::Error),
 }
 

@@ -75,13 +75,13 @@ fn add_meta_field(fields: &mut Fields) -> Result<(), syn::Error> {
 ///   - `#[error(from_sources)]`: Creates `From` impls for the `source` types of all variants. Will fail to compile if multiple sources have the same type.
 ///   - `#[error(std_sources)]`: Defaults all sources to be std errors instead of stack errors.
 /// - on enum variants and structs:
-///   - `#[display("..")]`: Sets the display formatting. You can refer to named fields by their names, and to tuple fields by `_0`, `_1` etc.
+///   - `#[error("format {field}: {}", a + b)]`: Sets the display formatting. You can refer to named fields by their names, and to tuple fields by `_0`, `_1` etc.
 ///   - `#[error(transparent)]`: Directly forwards the display implementation to the error source, and omits the outer error in the source chain when reporting errors.
 /// - on fields:
 ///   - `#[error(source)]`: Sets a field as the source of this error. If a field is named `source` this is applied implicitly and not needed.
 ///   - `#[error(from)]`: Creates a `From` impl for the field's type to the error type.
 ///   - `#[error(std_err)]`: Marks the error as a `std` error. Without this attribute, errors are expected to implement `StackError`. Only applicable to source fields.
-#[proc_macro_derive(Error, attributes(display, error))]
+#[proc_macro_derive(StackError, attributes(error))]
 pub fn derive_error(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as syn::DeriveInput);
     match derive_error_inner(input) {
@@ -91,9 +91,9 @@ pub fn derive_error(input: TokenStream) -> TokenStream {
 }
 
 fn derive_error_inner(input: DeriveInput) -> Result<proc_macro2::TokenStream, darling::Error> {
-    let top = TopAttrs::from_attributes(&input.attrs)?;
     match &input.data {
         syn::Data::Enum(item_enum) => {
+            let top = TopAttrs::from_attributes(&input.attrs)?;
             let infos = item_enum
                 .variants
                 .iter()
@@ -102,16 +102,20 @@ fn derive_error_inner(input: DeriveInput) -> Result<proc_macro2::TokenStream, da
             Ok(generate_enum_impls(&input.ident, &input.generics, infos))
         }
         syn::Data::Struct(item) => {
+            let top = TopAttrs::default();
             let info = VariantInfo::parse(&input.ident, &item.fields, &input.attrs, &top)?;
             Ok(generate_struct_impl(&input.ident, &input.generics, info))
         }
-        _ => Err(err(&input, "#[derive(Error)] only supports enums or structs").into()),
+        _ => Err(err(
+            &input,
+            "#[derive(StackError)] only supports enums or structs",
+        )
+        .into()),
     }
 }
 
 struct SourceField<'a> {
     kind: SourceKind,
-    transparent: bool,
     field: FieldInfo<'a>,
 }
 
@@ -137,7 +141,7 @@ enum SourceKind {
 }
 
 #[derive(Default, Clone, Copy, FromAttributes)]
-#[darling(default, attributes(error))]
+#[darling(default, attributes(error, stackerr))]
 struct TopAttrs {
     from_sources: bool,
     std_sources: bool,
@@ -154,18 +158,12 @@ struct FieldAttrs {
     meta: bool,
 }
 
-#[derive(Default, Clone, Copy, FromAttributes)]
-#[darling(default, attributes(error))]
-struct VariantAttrs {
-    transparent: bool,
-}
-
-// For each variant, capture doc comment text or #[display] attr
+// For each variant, capture doc comment text or #[error] attr
 struct VariantInfo<'a> {
     ident: Ident,
     fields: Vec<FieldInfo<'a>>,
     kind: Kind,
-    display: Option<proc_macro2::TokenStream>,
+    display: Display,
     source: Option<SourceField<'a>>,
     /// The field that is used for From<..> impls
     from: Option<FieldInfo<'a>>,
@@ -231,8 +229,10 @@ impl<'a> FieldIdent<'a> {
 
 impl<'a> VariantInfo<'a> {
     fn transparent(&self) -> Option<&FieldInfo<'_>> {
-        let source = self.source.as_ref()?;
-        source.transparent.then_some(&source.field)
+        match self.display {
+            Display::Transparent => self.source.as_ref().map(|s| &s.field),
+            _ => None,
+        }
     }
 
     fn field_binding_idents(&self) -> impl Iterator<Item = Ident> + '_ {
@@ -263,15 +263,7 @@ impl<'a> VariantInfo<'a> {
         attrs: &[Attribute],
         top: &TopAttrs,
     ) -> Result<VariantInfo<'a>, syn::Error> {
-        let variant_attrs = VariantAttrs::from_attributes(attrs)?;
-        let display = get_doc_or_display(&attrs)?;
-        // TODO: enable this but only for #[display] not for doc comments
-        // if display.is_some() && variant_attrs.transparent {
-        //     return Err(err(
-        //         ident,
-        //         "#[display] and #[error(transparent)] are mutually exclusive",
-        //     ));
-        // }
+        let display = get_display(&attrs)?;
         let (kind, fields): (Kind, Vec<FieldInfo>) = match fields {
             Fields::Named(ref fields) => (
                 Kind::Named,
@@ -308,7 +300,7 @@ impl<'a> VariantInfo<'a> {
                     _ => false,
                 }),
                 Kind::Tuple => {
-                    if variant_attrs.transparent {
+                    if display.is_transparent() {
                         fields.first()
                     } else {
                         None
@@ -316,7 +308,7 @@ impl<'a> VariantInfo<'a> {
                 }
             });
 
-        if variant_attrs.transparent && source_field.is_none() {
+        if display.is_transparent() && source_field.is_none() {
             return Err(err(
                 ident,
                 "Variants with #[error(transparent)] require a source field",
@@ -333,11 +325,7 @@ impl<'a> VariantInfo<'a> {
                     SourceKind::Stack
                 };
                 let field = (*field).clone();
-                Some(SourceField {
-                    kind,
-                    transparent: variant_attrs.transparent,
-                    field,
-                })
+                Some(SourceField { kind, field })
             }
         };
 
@@ -478,12 +466,12 @@ fn generate_enum_impls(
     });
 
     let match_fmt_message_arms = variants.iter().map(|vi| match &vi.display {
-        Some(expr) => {
+        Display::Format(expr) => {
             let binds: Vec<Ident> = vi.field_binding_idents().collect();
             let pat = vi.spread_all(&binds);
             quote! { #pat => { #expr } }
         }
-        None => {
+        Display::Default | Display::Transparent => {
             let text = format!("{}::{}", enum_ident, vi.ident);
             let pat = vi.spread_empty();
             quote! { #pat => write!(f, #text) }
@@ -705,7 +693,7 @@ fn generate_struct_impl(
             quote! { write!(f, "{}", #expr) }
         } else {
             match &info.display {
-                Some(expr) => {
+                Display::Format(expr) => {
                     let binds: Vec<Ident> = info.field_binding_idents().collect();
                     match info.kind {
                         Kind::Named => {
@@ -716,7 +704,7 @@ fn generate_struct_impl(
                         }
                     }
                 }
-                None => {
+                Display::Default | Display::Transparent => {
                     // Fallback to struct name
                     let text = info.ident.to_string();
                     quote! { write!(f, #text) }
@@ -868,47 +856,61 @@ fn generate_struct_impl(
     }
 }
 
-fn get_doc_or_display(attrs: &[Attribute]) -> Result<Option<proc_macro2::TokenStream>, syn::Error> {
-    // Prefer #[display("...")]
-    if let Some(attr) = attrs.iter().find(|a| a.path().is_ident("display")) {
-        // Accept format!-style args: #[display("text {}", arg1, arg2, ...)]
-        let args = attr.parse_args_with(Punctuated::<Expr, syn::Token![,]>::parse_terminated)?;
-        if args.is_empty() {
-            Err(err(
-                attr,
-                "#[display(..)] requires at least a format string",
-            ))
-        } else {
-            let mut it = args.into_iter();
-            let fmt = it.next().unwrap();
-            let rest: Vec<_> = it.collect();
-            Ok(Some(quote! { write!(f, #fmt #(, #rest)* ) }))
-        }
-    } else {
-        // Otherwise collect doc lines: #[doc = "..."]
-        let docs: Vec<String> = attrs
-            .iter()
-            .filter(|a| a.path().is_ident("doc"))
-            .filter_map(|attr| {
-                let s = attr.meta.require_name_value().ok()?;
-                match &s.value {
-                    syn::Expr::Lit(syn::ExprLit {
-                        lit: syn::Lit::Str(s),
-                        ..
-                    }) => Some(s.value().trim().to_string()),
-                    _ => None,
-                }
-            })
-            .collect();
-        if docs.is_empty() {
-            Ok(None)
-        } else {
-            let doc = docs.join("\n");
-            Ok(Some(quote! { write!(f, #doc) }))
-        }
+enum Display {
+    Default,
+    Transparent,
+    Format(proc_macro2::TokenStream),
+}
+
+impl Display {
+    fn is_transparent(&self) -> bool {
+        matches!(self, Self::Transparent)
     }
 }
 
+fn get_display(attrs: &[Attribute]) -> Result<Display, syn::Error> {
+    // Only consider #[error(...)]
+    let Some(attr) = attrs.iter().find(|a| a.path().is_ident("error")) else {
+        return Ok(Display::Default);
+    };
+
+    // syn 2: parse args inside the attribute's parentheses
+    let args: Punctuated<Expr, syn::Token![,]> =
+        attr.parse_args_with(Punctuated::<Expr, syn::Token![,]>::parse_terminated)?;
+
+    if args.is_empty() {
+        return Err(err(
+            attr,
+            "#[error(..)] requires arguments: a format string or `transparent`",
+        ));
+    }
+
+    // #[error(transparent)]
+    if args.len() == 1 {
+        if let Expr::Path(p) = &args[0] {
+            if p.path.is_ident("transparent") {
+                return Ok(Display::Transparent);
+            }
+        }
+    }
+
+    // #[error("...", args...)]
+    let mut it = args.into_iter();
+    let first = it.next().unwrap();
+
+    let fmt_lit = match first {
+        Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(s), .. }) => s,
+        other => {
+            return Err(err(
+                other,
+                "first argument to #[error(\"...\")] must be a string literal, or use #[error(transparent)]",
+            ))
+        }
+    };
+
+    let rest: Vec<Expr> = it.collect();
+    Ok(Display::Format(quote! { write!(f, #fmt_lit #(, #rest)* ) }))
+}
 fn err(ident: impl ToTokens, err: impl ToString) -> syn::Error {
     syn::Error::new_spanned(ident, err.to_string())
 }

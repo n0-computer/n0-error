@@ -148,16 +148,16 @@ impl<T> StackResultExt<T, NoneError> for Option<T> {
 
 /// Error returned when converting [`Option`]s to an error.
 #[add_meta]
-#[derive(crate::Error)]
-#[display("Expected some, found none")]
+#[derive(crate::StackError)]
+#[error("Expected some, found none")]
 pub struct NoneError {}
 
 /// A simple string error, providing a message and optionally a source.
 #[add_meta]
-#[derive(crate::Error)]
+#[derive(crate::StackError)]
 pub(crate) enum FromString {
-    #[display("{message}")]
+    #[error("{message}")]
     WithSource { message: String, source: AnyError },
-    #[display("{message}")]
+    #[error("{message}")]
     WithoutSource { message: String },
 }

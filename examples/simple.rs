@@ -62,18 +62,19 @@ fn print(err: impl StackError) {
 }
 
 pub mod error {
+    use n0_error::{StackError, add_meta};
     use std::io;
 
-    #[n0_error::add_meta]
-    #[derive(n0_error::Error)]
+    #[add_meta]
+    #[derive(StackError)]
     #[error(from_sources)]
     pub enum OperationError {
         /// Failed to copy
         Copy { source: CopyError },
     }
 
-    #[n0_error::add_meta]
-    #[derive(n0_error::Error)]
+    #[add_meta]
+    #[derive(StackError)]
     pub enum CopyError {
         /// Read error
         Read {
@@ -89,7 +90,7 @@ pub mod error {
             #[error(std_err)]
             source: io::Error,
         },
-        #[display("Bad request - missing characters: {missing} {}", missing * 2)]
+        #[error("Bad request - missing characters: {missing} {}", missing * 2)]
         BadRequest {
             missing: usize,
         },
@@ -101,8 +102,8 @@ pub mod error {
         Foo,
     }
 
-    #[n0_error::add_meta]
-    #[derive(n0_error::Error)]
+    #[add_meta]
+    #[derive(StackError)]
     pub enum InvalidArgsError {
         /// Failed to parse arguments
         FailedToParse {},
