@@ -15,6 +15,11 @@ macro_rules! e {
         $($err)::+ { source: $source, meta: $crate::Meta::default() }
     };
 
+    // Fields and values plus source
+    ($($err:tt)::+ { $($body:tt)* }, $source:expr) => {
+        $($err)::+ { meta: $crate::Meta::default(), source: $source, $($body)* }
+    };
+
     // Fields and values
     ($($err:tt)::+ { $($body:tt)* }) => {
         $($err)::+ { meta: $crate::Meta::default(), $($body)* }
