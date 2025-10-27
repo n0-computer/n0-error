@@ -84,19 +84,6 @@ macro_rules! ensure_e {
     };
 }
 
-/// Ensures a condition, otherwise returns the given error.
-///
-/// The error will be converted into the function's expected error return type
-/// with `into`.
-#[macro_export]
-macro_rules! ensure {
-    ($predicate:expr, $err:expr $(,)?) => {
-        if !$predicate {
-            return Err(::std::convert::Into::into($err));
-        }
-    };
-}
-
 /// Ensures a condition, otherwise returns an [`AnyError`].
 ///
 /// This macro takes an expression as its first argument. If the expression evaluates
