@@ -366,7 +366,7 @@
 /// This macro accepts the same forms as [`e`], but wraps the error into `Err` and
 /// expands to returning the result from the current function.
 </span><span class="attr">#[macro_export]
-</span><span class="macro">macro_rules!</span> bail {
+</span><span class="macro">macro_rules!</span> bail_e {
     ($(<span class="macro-nonterminal">$tt</span>:tt)<span class="kw-2">*</span>) =&gt; {
         <span class="kw">return </span>::core::result::Result::Err(<span class="macro-nonterminal">$</span><span class="macro">crate::e!</span>($(<span class="macro-nonterminal">$tt</span>)<span class="kw-2">*</span>))
     }
@@ -377,7 +377,7 @@
 /// This macro accepts the same forms as [`anyerr`], but wraps the error into `Err` and
 /// expands to returning the result from the current function.
 </span><span class="attr">#[macro_export]
-</span><span class="macro">macro_rules!</span> bail_any {
+</span><span class="macro">macro_rules!</span> bail {
     ($(<span class="macro-nonterminal">$tt</span>:tt)<span class="kw-2">*</span>) =&gt; {
         <span class="kw">return </span>core::result::Result::Err(<span class="macro-nonterminal">$</span><span class="macro">crate::anyerr!</span>($(<span class="macro-nonterminal">$tt</span>)<span class="kw-2">*</span>))
     }
