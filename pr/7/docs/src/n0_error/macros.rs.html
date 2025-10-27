@@ -296,7 +296,7 @@
 </span><span class="attr">#[macro_export]
 </span><span class="macro">macro_rules!</span> bail_e {
     ($(<span class="macro-nonterminal">$tt</span>:tt)<span class="kw-2">*</span>) =&gt; {
-        <span class="kw">return </span>::core::result::Result::Err(<span class="macro-nonterminal">$</span><span class="macro">crate::e!</span>($(<span class="macro-nonterminal">$tt</span>)<span class="kw-2">*</span>))
+        <span class="kw">return </span>::core::result::Result::Err(<span class="macro-nonterminal">$</span><span class="macro">crate::e!</span>($(<span class="macro-nonterminal">$tt</span>)<span class="kw-2">*</span>).into())
     }
 }
 
