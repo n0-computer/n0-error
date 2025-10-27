@@ -27,7 +27,7 @@ fn test_whatever() {
     let _guard = wait_sequential();
 
     fn fail() -> Result {
-        n0_error::bail_any!("sad face");
+        n0_error::bail!("sad face");
     }
 
     fn fail_my_error() -> Result<(), MyError> {

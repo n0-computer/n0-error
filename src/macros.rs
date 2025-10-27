@@ -138,7 +138,7 @@ macro_rules! ensure {
 macro_rules! ensure_any {
     ($cond:expr, $($tt:tt)*) => {
         if !$cond {
-            $crate::bail_any!($($tt)*)
+            $crate::bail!($($tt)*)
         }
     };
 }
@@ -148,7 +148,7 @@ macro_rules! ensure_any {
 /// This macro accepts the same forms as [`e`], but wraps the error into `Err` and
 /// expands to returning the result from the current function.
 #[macro_export]
-macro_rules! bail {
+macro_rules! bail_e {
     ($($tt:tt)*) => {
         return ::core::result::Result::Err($crate::e!($($tt)*))
     }
@@ -159,7 +159,7 @@ macro_rules! bail {
 /// This macro accepts the same forms as [`anyerr`], but wraps the error into `Err` and
 /// expands to returning the result from the current function.
 #[macro_export]
-macro_rules! bail_any {
+macro_rules! bail {
     ($($tt:tt)*) => {
         return core::result::Result::Err($crate::anyerr!($($tt)*))
     }
