@@ -114,7 +114,7 @@ macro_rules! ensure_any {
 #[macro_export]
 macro_rules! bail_e {
     ($($tt:tt)*) => {
-        return ::core::result::Result::Err($crate::e!($($tt)*))
+        return ::core::result::Result::Err($crate::e!($($tt)*).into())
     }
 }
 
