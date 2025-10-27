@@ -376,9 +376,12 @@ fn test_tuple_struct_basic() {
 
 #[add_meta]
 #[derive(n0_error::Error)]
+#[error(from_sources)]
 enum TupleEnum {
     #[display("io failed")]
     Io(#[error(source, std_err)] io::Error),
+    #[error(transparent)]
+    Transparent(MyError),
 }
 
 #[test]
@@ -391,6 +394,18 @@ fn test_tuple_enum_source_and_meta() {
     // Std source is the inner io::Error
     let src = std::error::Error::source(&e).unwrap();
     assert_eq!(src.to_string(), "oops");
+
+    let err = e!(MyError::A);
+    let err = TupleEnum::from(err);
+    assert_eq!(format!("{err}"), "A failure");
+    assert_eq!(format!("{err:?}"), "A failure");
+    n0_error::set_backtrace_enabled(true);
+    let err = e!(MyError::A);
+    let err = TupleEnum::from(err);
+    assert_eq!(
+        format!("{err:?}"),
+        "TupleEnum::Transparent (src/tests.rs:404:15)\nCaused by:\n    A failure (src/tests.rs:403:15)"
+    );
 }
 
 // TODO: turn into actual test
@@ -409,7 +424,7 @@ pub fn test_skip_transparent_errors() {
     #[error(std_sources)]
     enum ErrorB {
         #[error(transparent)]
-        IoTransparent { source: io::Error },
+        IoTransparent(io::Error),
         #[display("io error")]
         Io { source: io::Error },
     }
@@ -421,7 +436,7 @@ pub fn test_skip_transparent_errors() {
 
     fn err_b(transparent: bool) -> Result<(), ErrorB> {
         if transparent {
-            io().map_err(|err| e!(ErrorB::IoTransparent, err))
+            io().map_err(|err| ErrorB::IoTransparent(err, meta()))
         } else {
             io().map_err(|err| e!(ErrorB::Io, err))
         }
@@ -433,40 +448,37 @@ pub fn test_skip_transparent_errors() {
 
     let _guard = wait_sequential();
     set_backtrace_enabled(false);
-    println!("no bt, transparent");
+    println!("#### no bt, transparent");
     println!("{:?}", err_a(true).unwrap_err());
     set_backtrace_enabled(true);
-    println!("bt, transparent");
+    println!("#### bt, transparent");
     println!("{:?}", err_a(true).unwrap_err());
-    println!("{:#?}", err_a(true).unwrap_err());
+
     set_backtrace_enabled(false);
-    println!("no bt, not transparent");
+    println!("#### no bt, not transparent");
     println!("{:?}", err_a(false).unwrap_err());
+
     set_backtrace_enabled(true);
-    println!("bt, transparent");
+    println!("#### bt, transparent");
     println!("{:?}", err_a(true).unwrap_err());
-    println!("bt, not transparent");
-    println!("{:?}", err_a(false).unwrap_err());
-    println!("===");
-    println!("===");
-    println!("===");
+
     set_backtrace_enabled(true);
-    println!("bt, transparent, display alt");
+    println!("#### bt, transparent, display alt");
     println!("{:#}", err_a(true).unwrap_err());
-    println!("bt, not transparent, display alt");
+    println!("#### bt, not transparent, display alt");
     println!("{:#}", err_a(false).unwrap_err());
-    println!("bt, transparent, display");
+    println!("#### bt, transparent, display");
     println!("{}", err_a(true).unwrap_err());
-    println!("bt, not transparent, display");
+    println!("#### bt, not transparent, display");
     println!("{}", err_a(false).unwrap_err());
-    println!("===");
+
     set_backtrace_enabled(false);
-    println!("no bt, transparent, display alt");
+    println!("#### no bt, transparent, display alt");
     println!("{:#}", err_a(true).unwrap_err());
-    println!("no bt, not transparent, display alt");
+    println!("#### no bt, not transparent, display alt");
     println!("{:#}", err_a(false).unwrap_err());
-    println!("no bt, transparent, display");
+    println!("#### no bt, transparent, display");
     println!("{}", err_a(true).unwrap_err());
-    println!("no bt, not transparent, display");
+    println!("#### no bt, not transparent, display");
     println!("{}", err_a(false).unwrap_err());
 }
