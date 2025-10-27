@@ -10,7 +10,7 @@
 <li><code>anyerr!("this failed at {a} with {}", b)</code> creates an error with a formatted message</li>
 <li><code>anyerr!(value)</code> converts any <code>impl StackError</code>, <code>impl std::error::Error</code>, or <code>impl Display</code> into [<code>AnyError</code>].</li>
 <li><code>anyerr!(value, "context string") works as above, but adds "context string" as [</code>context`](Anyerr::context).</li>
-<li>`anyerr!(value, “contex {}”, foo) works as above, but with a formatted string as context</li>
+<li>`anyerr!(value, “context {}”, foo) works as above, but with a formatted string as context</li>
 </ul>
 <p>The forms that take <code>value</code> use <em>autoref specialization</em> to keep the most details possible:
 if given a [<code>StackError</code>] it uses [<code>AnyError::from_stack</code>], if given a std error, uses [<code>AnyError::from_std</code>],
