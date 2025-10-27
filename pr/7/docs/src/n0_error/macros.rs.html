@@ -256,7 +256,7 @@
 </span><span class="macro">macro_rules!</span> ensure_e {
     (<span class="macro-nonterminal">$predicate</span>:expr, $(<span class="macro-nonterminal">$tt</span>:tt)<span class="kw-2">*</span>) =&gt; {
         <span class="kw">if </span>!<span class="macro-nonterminal">$predicate </span>{
-            <span class="macro-nonterminal">$</span><span class="macro">crate::bail!</span>($(<span class="macro-nonterminal">$tt</span>)<span class="kw-2">*</span>)
+            <span class="macro-nonterminal">$</span><span class="macro">crate::bail_e!</span>($(<span class="macro-nonterminal">$tt</span>)<span class="kw-2">*</span>)
         }
     };
 }
