@@ -21,42 +21,6 @@ macro_rules! e {
     };
 }
 
-/// Constructs an error enum/struct value and wraps it in `Err(err)`.
-///
-/// See [`e`] for supported syntax.
-#[deprecated]
-#[macro_export]
-macro_rules! Err {
-    ($($tt:tt)*) => {
-        ::core::result::Result::Err($crate::e!($($tt)*))
-    }
-}
-
-/// Propagates an error, adding formatted context.
-///
-/// - `whatever!("msg")` returns `Err(format_err!(...))`.
-/// - `whatever!(source, "msg {x}", x)` unwraps `source` or returns with context.
-#[deprecated]
-#[macro_export]
-macro_rules! whatever {
-    ($fmt:literal$(, $($arg:expr),* $(,)?)?) => {
-        return ::core::result::Result::Err({
-            $crate::format_err!($fmt$(, $($arg),*)*)
-        });
-    };
-    ($result:expr, $fmt:literal$(, $($arg:expr),* $(,)?)*) => {
-        match $result {
-            ::core::result::Result::Ok(v) => v,
-            ::core::result::Result::Err(e) => {
-                let context = ::std::format!($fmt$(, $($arg),*)*);
-                return ::core::result::Result::Err(
-                    $crate::anyerr!(e).context(context)
-                );
-            }
-        }
-    };
-}
-
 /// Unwraps a result, returning in the error case while converting the error.
 ///
 /// If the result is the error variant, this will construct a new error with [`e`]
