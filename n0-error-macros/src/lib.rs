@@ -1,5 +1,6 @@
 use darling::FromAttributes;
 use proc_macro::TokenStream;
+use proc_macro2::Span;
 use quote::{quote, ToTokens};
 use syn::{
     parse_macro_input, parse_quote, punctuated::Punctuated, Attribute, DeriveInput, Expr, Field,
@@ -215,25 +216,29 @@ enum FieldIdent<'a> {
     Unnamed(usize),
 }
 
-impl<'a> VariantInfo<'a> {
-    fn transparent(&self) -> Option<&Ident> {
-        let source = self.source.as_ref()?;
-        if !source.transparent {
-            None
-        } else {
-            match source.field.ident {
-                FieldIdent::Named(ident) => Some(ident),
-                FieldIdent::Unnamed(_) => None,
+impl<'a> FieldIdent<'a> {
+    fn self_expr(&self) -> proc_macro2::TokenStream {
+        match self {
+            FieldIdent::Named(ident) => {
+                quote!(self.#ident)
+            }
+            FieldIdent::Unnamed(num) => {
+                quote!(self.#num)
             }
         }
+    }
+}
+
+impl<'a> VariantInfo<'a> {
+    fn transparent(&self) -> Option<&FieldInfo<'_>> {
+        let source = self.source.as_ref()?;
+        source.transparent.then_some(&source.field)
     }
 
     fn field_binding_idents(&self) -> impl Iterator<Item = Ident> + '_ {
         self.fields.iter().map(|f| match f.ident {
             FieldIdent::Named(ident) => ident.clone(),
-            FieldIdent::Unnamed(i) => {
-                syn::Ident::new(&format!("_{}", i), proc_macro2::Span::call_site())
-            }
+            FieldIdent::Unnamed(i) => syn::Ident::new(&format!("_{}", i), Span::call_site()),
         })
     }
 
@@ -248,9 +253,7 @@ impl<'a> VariantInfo<'a> {
     fn field_idents_without_meta(&self) -> impl Iterator<Item = Ident> + '_ {
         self.fields_without_meta().map(|f| match f.ident {
             FieldIdent::Named(ident) => ident.clone(),
-            FieldIdent::Unnamed(i) => {
-                syn::Ident::new(&format!("_{}", i), proc_macro2::Span::call_site())
-            }
+            FieldIdent::Unnamed(i) => syn::Ident::new(&format!("_{}", i), Span::call_site()),
         })
     }
 
@@ -260,6 +263,15 @@ impl<'a> VariantInfo<'a> {
         attrs: &[Attribute],
         top: &TopAttrs,
     ) -> Result<VariantInfo<'a>, syn::Error> {
+        let variant_attrs = VariantAttrs::from_attributes(attrs)?;
+        let display = get_doc_or_display(&attrs)?;
+        // TODO: enable this but only for #[display] not for doc comments
+        // if display.is_some() && variant_attrs.transparent {
+        //     return Err(err(
+        //         ident,
+        //         "#[display] and #[error(transparent)] are mutually exclusive",
+        //     ));
+        // }
         let (kind, fields): (Kind, Vec<FieldInfo>) = match fields {
             Fields::Named(ref fields) => (
                 Kind::Named,
@@ -295,10 +307,15 @@ impl<'a> VariantInfo<'a> {
                     FieldIdent::Named(name) => name == "source",
                     _ => false,
                 }),
-                Kind::Tuple => None,
+                Kind::Tuple => {
+                    if variant_attrs.transparent {
+                        fields.first()
+                    } else {
+                        None
+                    }
+                }
             });
 
-        let variant_attrs = VariantAttrs::from_attributes(attrs)?;
         if variant_attrs.transparent && source_field.is_none() {
             return Err(err(
                 ident,
@@ -334,7 +351,7 @@ impl<'a> VariantInfo<'a> {
             ident: ident.clone(),
             fields,
             kind,
-            display: get_doc_or_display(&attrs)?,
+            display,
             source,
             from: from_field,
             meta: meta_field,
@@ -401,10 +418,10 @@ impl<'a> VariantInfo<'a> {
                             }
                             FieldIdent::Unnamed(_) => unreachable!(),
                         });
-                    quote! { Self::#v_ident { #( #pairs ),* } }
+                    quote! { #[allow(unused)] Self::#v_ident { #( #pairs ),* } }
                 }
                 Kind::Tuple => {
-                    quote! { Self::#v_ident ( #( #binds ),* ) }
+                    quote! { #[allow(unused)] Self::#v_ident ( #( #binds ),* ) }
                 }
             }
         }
@@ -419,7 +436,7 @@ fn generate_enum_impls(
     // StackError impl pieces
     let match_meta_arms = variants.iter().map(|vi| {
         if let Some(meta_field) = &vi.meta {
-            let bind = syn::Ident::new("__meta", proc_macro2::Span::call_site());
+            let bind = syn::Ident::new("__meta", Span::call_site());
             let pat = vi.spread_field(meta_field, &bind);
             quote! { #pat => Some(&#bind) }
         } else {
@@ -430,7 +447,7 @@ fn generate_enum_impls(
 
     let match_source_arms = variants.iter().map(|vi| match &vi.source {
         Some(src) => {
-            let bind = syn::Ident::new("__src", proc_macro2::Span::call_site());
+            let bind = syn::Ident::new("__src", Span::call_site());
             let pat = vi.spread_field(&src.field, &bind);
             let expr = src.expr_error_ref(&bind);
             quote! { #pat => #expr, }
@@ -443,7 +460,7 @@ fn generate_enum_impls(
 
     let match_std_source_arms = variants.iter().map(|vi| match &vi.source {
         Some(src) => {
-            let bind = syn::Ident::new("__src", proc_macro2::Span::call_site());
+            let bind = syn::Ident::new("source", Span::call_site());
             let pat = vi.spread_field(&src.field, &bind);
             let expr = src.expr_error_std(&bind);
             quote! { #pat => #expr, }
@@ -460,35 +477,40 @@ fn generate_enum_impls(
         quote! { #pat => #value }
     });
 
-    let match_fmt_message_arms = variants.iter().map(|vi| {
-        let v_ident = &vi.ident;
-        if let Some(trans_ident) = vi.transparent() {
-            return quote! { Self::#v_ident { #trans_ident, .. } => { write!(f, "{}", #trans_ident) } };
+    let match_fmt_message_arms = variants.iter().map(|vi| match &vi.display {
+        Some(expr) => {
+            let binds: Vec<Ident> = vi.field_binding_idents().collect();
+            let pat = vi.spread_all(&binds);
+            quote! { #pat => { #expr } }
         }
-        match &vi.display {
-            Some(expr) => {
-                let binds: Vec<Ident> = vi.field_binding_idents().collect();
-                let pat = vi.spread_all(&binds);
-                quote! { #[allow(unused)] #pat => { #expr } }
-            }
-            None => {
-                let text = v_ident.to_string();
-                let pat = vi.spread_empty();
-                quote! { #pat => write!(f, #text) }
-            }
+        None => {
+            let text = format!("{}::{}", enum_ident, vi.ident);
+            let pat = vi.spread_empty();
+            quote! { #pat => write!(f, #text) }
         }
     });
 
     let match_debug_arms = variants.iter().map(|vi| {
-        let v_ident = &vi.ident;
-        let v_name = v_ident.to_string();
+        let v_name = vi.ident.to_string();
         let binds: Vec<Ident> = vi.field_binding_idents().collect();
         let pat = vi.spread_all(&binds);
-        let labels: Vec<String> = vi.fields.iter().enumerate().map(|(i, f)| match f.ident { FieldIdent::Named(id) => id.to_string(), FieldIdent::Unnamed(_) => i.to_string() }).collect();
-        quote! { #pat => { let mut dbg = f.debug_struct(#v_name); #( dbg.field(#labels, &#binds); )*; dbg.finish()?; } }
+        let labels: Vec<String> = vi
+            .fields
+            .iter()
+            .map(|f| match f.ident {
+                FieldIdent::Named(id) => id.to_string(),
+                FieldIdent::Unnamed(i) => i.to_string(),
+            })
+            .collect();
+        quote! {
+            #pat => {
+                let mut dbg = f.debug_struct(#v_name);
+                #( dbg.field(#labels, &#binds); )*; dbg.finish()?;
+            }
+        }
     });
 
-    // From impls for variants marked with #[from]
+    // From impls for variant fields marked with #[from]
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let from_impls = variants.iter().filter_map(|vi| vi.from.as_ref().map(|field| (vi, field))).map(|(vi, field)| {
         let v_ident = &vi.ident;
@@ -524,13 +546,19 @@ fn generate_enum_impls(
     });
 
     quote! {
-        impl ::n0_error::StackError for #enum_ident #generics {
+        impl #impl_generics ::n0_error::StackError for #enum_ident #ty_generics #where_clause {
             fn as_std(&self) -> &(dyn ::std::error::Error + ::std::marker::Send + ::std::marker::Sync + 'static) {
                 self
             }
 
             fn as_dyn(&self) -> &(dyn ::n0_error::StackError) {
                 self
+            }
+
+            fn fmt_message(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                match self {
+                    #( #match_fmt_message_arms, )*
+                }
             }
 
             fn meta(&self) -> Option<&::n0_error::Meta> {
@@ -551,26 +579,21 @@ fn generate_enum_impls(
             }
         }
 
-        impl #impl_generics ::core::convert::From<#enum_ident> for ::n0_error::AnyError #ty_generics #where_clause {
-            fn from(value: #enum_ident) -> ::n0_error::AnyError {
+        impl #impl_generics ::core::convert::From<#enum_ident #ty_generics> for ::n0_error::AnyError #where_clause {
+            fn from(value: #enum_ident #ty_generics) -> ::n0_error::AnyError {
                 ::n0_error::AnyError::from_stack(value)
             }
         }
 
-        impl ::std::fmt::Display for #enum_ident #generics {
+        impl #impl_generics ::std::fmt::Display for #enum_ident #ty_generics #where_clause {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                use ::n0_error::{SourceFormat, StackError, StackErrorExt};
-                match self {
-                    #( #match_fmt_message_arms, )*
-                }?;
-                if f.alternate() {
-                    self.report().fmt_sources(f, SourceFormat::OneLine)?;
-                }
-                Ok(())
+                use ::n0_error::{SourceFormat, StackError};
+                let sources = f.alternate().then_some(SourceFormat::OneLine);
+                write!(f, "{}", self.report().sources(sources))
             }
         }
 
-        impl ::std::fmt::Debug for #enum_ident #generics {
+        impl #impl_generics ::std::fmt::Debug for #enum_ident #ty_generics #where_clause {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 use ::n0_error::StackErrorExt;
                 if f.alternate() {
@@ -578,14 +601,14 @@ fn generate_enum_impls(
                         #(#match_debug_arms)*
                     }
                 } else {
-                    use ::n0_error::{StackError};
-                    self.report().full().format(f)?;
+                    use ::n0_error::StackError;
+                    write!(f, "{}", self.report().full())?;
                 }
                 Ok(())
             }
         }
 
-        impl ::std::error::Error for #enum_ident #generics {
+        impl #impl_generics ::std::error::Error for #enum_ident #ty_generics #where_clause {
             fn source(&self) -> Option<&(dyn ::std::error::Error + 'static)> {
                 match self {
                     #( #match_std_source_arms )*
@@ -607,7 +630,7 @@ fn generate_struct_impl(
             match f.ident {
                 FieldIdent::Named(ident) => quote! { #ident: #ty },
                 FieldIdent::Unnamed(i) => {
-                    let arg = syn::Ident::new(&format!("_{}", i), proc_macro2::Span::call_site());
+                    let arg = syn::Ident::new(&format!("_{}", i), Span::call_site());
                     quote! { #arg: #ty }
                 }
             }
@@ -644,7 +667,7 @@ fn generate_struct_impl(
 
     let get_error_source = match &info.source {
         Some(src) => {
-            let bind = syn::Ident::new("__src", proc_macro2::Span::call_site());
+            let bind = syn::Ident::new("source", Span::call_site());
             let getter = match src.field.ident {
                 FieldIdent::Named(id) => quote! { let #bind = &self.#id; },
                 FieldIdent::Unnamed(i) => {
@@ -660,7 +683,7 @@ fn generate_struct_impl(
 
     let get_std_source = match &info.source {
         Some(src) => {
-            let bind = syn::Ident::new("__src", proc_macro2::Span::call_site());
+            let bind = syn::Ident::new("__src", Span::call_site());
             let getter = match src.field.ident {
                 FieldIdent::Named(id) => quote! { let #bind = &self.#id; },
                 FieldIdent::Unnamed(i) => {
@@ -677,8 +700,9 @@ fn generate_struct_impl(
     let is_transparent = info.transparent().is_some();
 
     let get_display = {
-        if let Some(ident) = info.transparent() {
-            quote! { write!(f, "{}", self.#ident) }
+        if let Some(field) = info.transparent() {
+            let expr = field.ident.self_expr();
+            quote! { write!(f, "{}", #expr) }
         } else {
             match &info.display {
                 Some(expr) => {
@@ -715,10 +739,20 @@ fn generate_struct_impl(
             .collect();
         match info.kind {
             Kind::Named => {
-                quote! { let Self { #( #binds ),* } = self; let mut dbg = f.debug_struct(#item_name); #( dbg.field(#labels, &#binds); )*; dbg.finish()?; }
+                quote! {
+                    let Self { #( #binds ),* } = self;
+                    let mut dbg = f.debug_struct(#item_name);
+                    #( dbg.field(#labels, &#binds); )*;
+                    dbg.finish()?;
+                }
             }
             Kind::Tuple => {
-                quote! { let Self( #( #binds ),* ) = self; let mut dbg = f.debug_struct(#item_name); #( dbg.field(#labels, &#binds); )*; dbg.finish()?; }
+                quote! {
+                    let Self( #( #binds ),* ) = self;
+                    let mut dbg = f.debug_struct(#item_name);
+                    #( dbg.field(#labels, &#binds); )*;
+                    dbg.finish()?;
+                }
             }
         }
     };
@@ -773,7 +807,7 @@ fn generate_struct_impl(
             #constructor
         }
 
-        impl ::n0_error::StackError for #item_ident #generics {
+        impl #impl_generics ::n0_error::StackError for #item_ident #ty_generics #where_clause {
             fn as_std(&self) -> &(dyn ::std::error::Error + ::std::marker::Send + ::std::marker::Sync + 'static) {
                 self
             }
@@ -791,39 +825,40 @@ fn generate_struct_impl(
             fn is_transparent(&self) -> bool {
                 #is_transparent
             }
+
+            fn fmt_message(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                #get_display
+            }
         }
 
 
-        impl #impl_generics ::core::convert::From<#item_ident> for ::n0_error::AnyError #ty_generics #where_clause {
-            fn from(value: #item_ident) -> ::n0_error::AnyError {
+        impl #impl_generics ::core::convert::From<#item_ident #ty_generics> for ::n0_error::AnyError #where_clause {
+            fn from(value: #item_ident #ty_generics) -> ::n0_error::AnyError {
                 ::n0_error::AnyError::from_stack(value)
             }
         }
 
-        impl ::std::fmt::Display for #item_ident #generics {
+        impl #impl_generics ::std::fmt::Display for #item_ident #ty_generics #where_clause {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 use ::n0_error::{SourceFormat, StackError};
-                #get_display?;
-                if f.alternate() {
-                    self.report().fmt_sources(f, SourceFormat::OneLine)?;
-                }
-                Ok(())
+                let sources = f.alternate().then_some(SourceFormat::OneLine);
+                write!(f, "{}", self.report().sources(sources))
             }
         }
 
-        impl ::std::fmt::Debug for #item_ident #generics {
+        impl #impl_generics ::std::fmt::Debug for #item_ident #ty_generics #where_clause {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 if f.alternate() {
                     #get_debug
                 } else {
-                    use ::n0_error::{StackError};
-                    self.report().full().format(f)?;
+                    use ::n0_error::StackError;
+                    write!(f, "{}", self.report().full())?;
                 }
                 Ok(())
             }
         }
 
-        impl ::std::error::Error for #item_ident #generics {
+        impl #impl_generics ::std::error::Error for #item_ident #ty_generics #where_clause {
             fn source(&self) -> Option<&(dyn ::std::error::Error + 'static)> {
                 #get_std_source
             }

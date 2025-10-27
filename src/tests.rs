@@ -3,7 +3,7 @@ use std::io;
 use self::util::wait_sequential;
 use crate::{
     AnyError, Error, Result, StackError, StackErrorExt, StackResultExt, StdResultExt, add_meta,
-    anyerr, e, ensure_any, format_err, meta,
+    anyerr, e, ensure_any, format_err, meta, set_backtrace_enabled,
 };
 mod util;
 
@@ -27,7 +27,7 @@ fn test_whatever() {
     let _guard = wait_sequential();
 
     fn fail() -> Result {
-        n0_error::whatever!("sad face");
+        n0_error::bail!("sad face");
     }
 
     fn fail_my_error() -> Result<(), MyError> {
@@ -35,12 +35,12 @@ fn test_whatever() {
     }
 
     fn fail_whatever() -> Result {
-        n0_error::whatever!(fail(), "sad");
+        n0_error::try_any!(fail(), "sad");
         Ok(())
     }
 
     fn fail_whatever_my_error() -> Result {
-        n0_error::whatever!(fail_my_error(), "sad");
+        n0_error::try_any!(fail_my_error(), "sad");
         Ok(())
     }
 
@@ -61,12 +61,12 @@ fn test_whatever() {
 
     assert_eq!(
         format!("{:?}", fail_whatever().unwrap_err()),
-        "sad\nCaused by:\n    0: sad face"
+        "sad\nCaused by:\n    sad face"
     );
 
     assert_eq!(
         format!("{:?}", fail_whatever()),
-        "Err(sad\nCaused by:\n    0: sad face)"
+        "Err(sad\nCaused by:\n    sad face)"
     );
 
     n0_error::set_backtrace_enabled(true);
@@ -76,7 +76,7 @@ fn test_whatever() {
     assert_eq!(format!("{:#}", fail_my_error().unwrap_err()), "A failure");
     assert_eq!(
         format!("{:?}", fail_my_error().unwrap_err()),
-        format!("A failure (at src/tests.rs:34:32)")
+        format!("A failure (src/tests.rs:34:32)")
     );
     //     let expected = r#"A {
     //     location: Some(
@@ -180,8 +180,8 @@ fn test_sources() {
         &fmt,
         r#"read error
 Caused by:
-    0: failed to read foo.txt
-    1: file not found"#
+    failed to read foo.txt
+    file not found"#
     );
 
     let fmt = format!("{err:#?}");
@@ -208,10 +208,10 @@ Caused by:
     println!("debug :\n{fmt}\n");
     assert_eq!(
         &fmt,
-        r#"read error (at src/tests.rs:195:34)
+        r#"read error (src/tests.rs:195:34)
 Caused by:
-    0: failed to read foo.txt (at src/tests.rs:194:39)
-    1: file not found (at src/tests.rs:194:39)"#
+    failed to read foo.txt (src/tests.rs:194:39)
+    file not found (src/tests.rs:194:39)"#
     );
     let fmt = format!("{err:#?}");
     println!("debug alternate:\n{fmt}\n");
@@ -289,7 +289,7 @@ fn test_structs_location() {
     let res = fail_some_error();
     let err = res.unwrap_err();
     assert_eq!(format!("{err}"), "SomeErrorLoc");
-    assert_eq!(format!("{err:?}"), "SomeErrorLoc (at src/tests.rs:282:13)");
+    assert_eq!(format!("{err:?}"), "SomeErrorLoc (src/tests.rs:282:13)");
     let err2 = err.context("bad");
     assert_eq!(format!("{err2:#}"), "bad: SomeErrorLoc");
     let res = fail_some_error_fields();
@@ -300,9 +300,9 @@ fn test_structs_location() {
     println!("{err2:?}");
     assert_eq!(
         format!("{err2:?}"),
-        r#"bad (at src/tests.rs:298:20)
+        r#"bad (src/tests.rs:298:20)
 Caused by:
-    0: fail (22) (at src/tests.rs:286:13)"#
+    fail (22) (src/tests.rs:286:13)"#
     );
 }
 
@@ -376,9 +376,12 @@ fn test_tuple_struct_basic() {
 
 #[add_meta]
 #[derive(n0_error::Error)]
+#[error(from_sources)]
 enum TupleEnum {
     #[display("io failed")]
     Io(#[error(source, std_err)] io::Error),
+    #[error(transparent)]
+    Transparent(MyError),
 }
 
 #[test]
@@ -391,4 +394,121 @@ fn test_tuple_enum_source_and_meta() {
     // Std source is the inner io::Error
     let src = std::error::Error::source(&e).unwrap();
     assert_eq!(src.to_string(), "oops");
+
+    let err = e!(MyError::A);
+    let err = TupleEnum::from(err);
+    assert_eq!(format!("{err}"), "A failure");
+    assert_eq!(format!("{err:?}"), "A failure");
+    n0_error::set_backtrace_enabled(true);
+    let err = e!(MyError::A);
+    let err = TupleEnum::from(err);
+    assert_eq!(
+        format!("{err:?}"),
+        "TupleEnum::Transparent (src/tests.rs:404:15)\nCaused by:\n    A failure (src/tests.rs:403:15)"
+    );
+}
+
+// TODO: turn into actual test
+#[test]
+pub fn test_skip_transparent_errors() {
+    #[add_meta]
+    #[derive(Error)]
+    #[error(from_sources)]
+    enum ErrorA {
+        #[display("failure at b")]
+        ErrorB { source: ErrorB },
+    }
+
+    #[add_meta]
+    #[derive(Error)]
+    #[error(std_sources)]
+    enum ErrorB {
+        #[error(transparent)]
+        IoTransparent(io::Error),
+        #[display("io error")]
+        Io { source: io::Error },
+    }
+
+    fn err_a(transparent: bool) -> Result<(), ErrorA> {
+        err_b(transparent)?;
+        Ok(())
+    }
+
+    fn err_b(transparent: bool) -> Result<(), ErrorB> {
+        if transparent {
+            io().map_err(|err| ErrorB::IoTransparent(err, meta()))
+        } else {
+            io().map_err(|err| e!(ErrorB::Io, err))
+        }
+    }
+
+    fn io() -> io::Result<()> {
+        Err(io::Error::other("bad"))
+    }
+
+    let _guard = wait_sequential();
+    set_backtrace_enabled(false);
+    println!("#### no bt, transparent");
+    println!("{:?}", err_a(true).unwrap_err());
+    set_backtrace_enabled(true);
+    println!("#### bt, transparent");
+    println!("{:?}", err_a(true).unwrap_err());
+
+    set_backtrace_enabled(false);
+    println!("#### no bt, not transparent");
+    println!("{:?}", err_a(false).unwrap_err());
+
+    set_backtrace_enabled(true);
+    println!("#### bt, transparent");
+    println!("{:?}", err_a(true).unwrap_err());
+
+    set_backtrace_enabled(true);
+    println!("#### bt, transparent, display alt");
+    println!("{:#}", err_a(true).unwrap_err());
+    println!("#### bt, not transparent, display alt");
+    println!("{:#}", err_a(false).unwrap_err());
+    println!("#### bt, transparent, display");
+    println!("{}", err_a(true).unwrap_err());
+    println!("#### bt, not transparent, display");
+    println!("{}", err_a(false).unwrap_err());
+
+    set_backtrace_enabled(false);
+    println!("#### no bt, transparent, display alt");
+    println!("{:#}", err_a(true).unwrap_err());
+    println!("#### no bt, not transparent, display alt");
+    println!("{:#}", err_a(false).unwrap_err());
+    println!("#### no bt, transparent, display");
+    println!("{}", err_a(true).unwrap_err());
+    println!("#### no bt, not transparent, display");
+    println!("{}", err_a(false).unwrap_err());
+}
+
+#[test]
+fn test_generics() {
+    #[add_meta]
+    #[derive(Error)]
+    #[display("failed at {}", list.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", "))]
+    struct GenericError<E: std::fmt::Display + std::fmt::Debug + Send + Sync + 'static> {
+        list: Vec<E>,
+    }
+
+    #[add_meta]
+    #[derive(Error)]
+    enum GenericEnumError<E: std::fmt::Display + std::fmt::Debug + Send + Sync + 'static> {
+        Foo,
+        Bar {
+            list: Vec<E>,
+        },
+        #[display("failed at {other}")]
+        Baz {
+            other: Box<E>,
+        },
+    }
+
+    let err = GenericError::new(vec!["foo", "bar"]);
+    assert_eq!(format!("{err}"), "failed at foo, bar");
+    let err = e!(GenericEnumError::Baz {
+        other: Box::new("foo")
+    });
+    assert_eq!(format!("{err}"), "failed at foo");
 }
