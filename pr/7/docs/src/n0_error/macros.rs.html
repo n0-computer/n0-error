@@ -172,20 +172,7 @@
 <a href="#171" id="171">171</a>
 <a href="#172" id="172">172</a>
 <a href="#173" id="173">173</a>
-<a href="#174" id="174">174</a>
-<a href="#175" id="175">175</a>
-<a href="#176" id="176">176</a>
-<a href="#177" id="177">177</a>
-<a href="#178" id="178">178</a>
-<a href="#179" id="179">179</a>
-<a href="#180" id="180">180</a>
-<a href="#181" id="181">181</a>
-<a href="#182" id="182">182</a>
-<a href="#183" id="183">183</a>
-<a href="#184" id="184">184</a>
-<a href="#185" id="185">185</a>
-<a href="#186" id="186">186</a>
-<a href="#187" id="187">187</a></pre></div><pre class="rust"><code><span class="doccomment">/// Constructs an error enum/struct value while automatically filling `meta: Meta`.
+<a href="#174" id="174">174</a></pre></div><pre class="rust"><code><span class="doccomment">/// Constructs an error enum/struct value while automatically filling `meta: Meta`.
 ///
 /// - `e!(MyError::Variant)` constructs `MyError::Variant { meta: Meta::default() }`.
 /// - `e!(MyError::Variant, source)` constructs `MyError::Variant { source, meta: Meta::default() }`.
@@ -267,19 +254,6 @@
     (<span class="macro-nonterminal">$predicate</span>:expr, $(<span class="macro-nonterminal">$tt</span>:tt)<span class="kw-2">*</span>) =&gt; {
         <span class="kw">if </span>!<span class="macro-nonterminal">$predicate </span>{
             <span class="macro-nonterminal">$</span><span class="macro">crate::bail_e!</span>($(<span class="macro-nonterminal">$tt</span>)<span class="kw-2">*</span>)
-        }
-    };
-}
-
-<span class="doccomment">/// Ensures a condition, otherwise returns the given error.
-///
-/// The error will be converted into the function's expected error return type
-/// with `into`.
-</span><span class="attr">#[macro_export]
-</span><span class="macro">macro_rules!</span> ensure {
-    (<span class="macro-nonterminal">$predicate</span>:expr, <span class="macro-nonterminal">$err</span>:expr $(,)<span class="question-mark">?</span>) =&gt; {
-        <span class="kw">if </span>!<span class="macro-nonterminal">$predicate </span>{
-            <span class="kw">return </span><span class="prelude-val">Err</span>(::std::convert::Into::into(<span class="macro-nonterminal">$err</span>));
         }
     };
 }
