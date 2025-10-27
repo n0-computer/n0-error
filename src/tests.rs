@@ -482,3 +482,33 @@ pub fn test_skip_transparent_errors() {
     println!("#### no bt, not transparent, display");
     println!("{}", err_a(false).unwrap_err());
 }
+
+#[test]
+fn test_generics() {
+    #[add_meta]
+    #[derive(Error)]
+    #[display("failed at {}", list.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", "))]
+    struct GenericError<E: std::fmt::Display + std::fmt::Debug + Send + Sync + 'static> {
+        list: Vec<E>,
+    }
+
+    #[add_meta]
+    #[derive(Error)]
+    enum GenericEnumError<E: std::fmt::Display + std::fmt::Debug + Send + Sync + 'static> {
+        Foo,
+        Bar {
+            list: Vec<E>,
+        },
+        #[display("failed at {other}")]
+        Baz {
+            other: Box<E>,
+        },
+    }
+
+    let err = GenericError::new(vec!["foo", "bar"]);
+    assert_eq!(format!("{err}"), "failed at foo, bar");
+    let err = e!(GenericEnumError::Baz {
+        other: Box::new("foo")
+    });
+    assert_eq!(format!("{err}"), "failed at foo");
+}

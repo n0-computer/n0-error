@@ -546,7 +546,7 @@ fn generate_enum_impls(
     });
 
     quote! {
-        impl ::n0_error::StackError for #enum_ident #generics {
+        impl #impl_generics ::n0_error::StackError for #enum_ident #ty_generics #where_clause {
             fn as_std(&self) -> &(dyn ::std::error::Error + ::std::marker::Send + ::std::marker::Sync + 'static) {
                 self
             }
@@ -579,13 +579,13 @@ fn generate_enum_impls(
             }
         }
 
-        impl #impl_generics ::core::convert::From<#enum_ident> for ::n0_error::AnyError #ty_generics #where_clause {
-            fn from(value: #enum_ident) -> ::n0_error::AnyError {
+        impl #impl_generics ::core::convert::From<#enum_ident #ty_generics> for ::n0_error::AnyError #where_clause {
+            fn from(value: #enum_ident #ty_generics) -> ::n0_error::AnyError {
                 ::n0_error::AnyError::from_stack(value)
             }
         }
 
-        impl ::std::fmt::Display for #enum_ident #generics {
+        impl #impl_generics ::std::fmt::Display for #enum_ident #ty_generics #where_clause {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 use ::n0_error::{SourceFormat, StackError};
                 let sources = f.alternate().then_some(SourceFormat::OneLine);
@@ -593,7 +593,7 @@ fn generate_enum_impls(
             }
         }
 
-        impl ::std::fmt::Debug for #enum_ident #generics {
+        impl #impl_generics ::std::fmt::Debug for #enum_ident #ty_generics #where_clause {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 use ::n0_error::StackErrorExt;
                 if f.alternate() {
@@ -608,7 +608,7 @@ fn generate_enum_impls(
             }
         }
 
-        impl ::std::error::Error for #enum_ident #generics {
+        impl #impl_generics ::std::error::Error for #enum_ident #ty_generics #where_clause {
             fn source(&self) -> Option<&(dyn ::std::error::Error + 'static)> {
                 match self {
                     #( #match_std_source_arms )*
@@ -807,7 +807,7 @@ fn generate_struct_impl(
             #constructor
         }
 
-        impl ::n0_error::StackError for #item_ident #generics {
+        impl #impl_generics ::n0_error::StackError for #item_ident #ty_generics #where_clause {
             fn as_std(&self) -> &(dyn ::std::error::Error + ::std::marker::Send + ::std::marker::Sync + 'static) {
                 self
             }
@@ -832,13 +832,13 @@ fn generate_struct_impl(
         }
 
 
-        impl #impl_generics ::core::convert::From<#item_ident> for ::n0_error::AnyError #ty_generics #where_clause {
-            fn from(value: #item_ident) -> ::n0_error::AnyError {
+        impl #impl_generics ::core::convert::From<#item_ident #ty_generics> for ::n0_error::AnyError #where_clause {
+            fn from(value: #item_ident #ty_generics) -> ::n0_error::AnyError {
                 ::n0_error::AnyError::from_stack(value)
             }
         }
 
-        impl ::std::fmt::Display for #item_ident #generics {
+        impl #impl_generics ::std::fmt::Display for #item_ident #ty_generics #where_clause {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 use ::n0_error::{SourceFormat, StackError};
                 let sources = f.alternate().then_some(SourceFormat::OneLine);
@@ -846,7 +846,7 @@ fn generate_struct_impl(
             }
         }
 
-        impl ::std::fmt::Debug for #item_ident #generics {
+        impl #impl_generics ::std::fmt::Debug for #item_ident #ty_generics #where_clause {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 if f.alternate() {
                     #get_debug
@@ -858,7 +858,7 @@ fn generate_struct_impl(
             }
         }
 
-        impl ::std::error::Error for #item_ident #generics {
+        impl #impl_generics ::std::error::Error for #item_ident #ty_generics #where_clause {
             fn source(&self) -> Option<&(dyn ::std::error::Error + 'static)> {
                 #get_std_source
             }
