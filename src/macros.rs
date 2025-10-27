@@ -76,7 +76,7 @@ macro_rules! format_err {
 /// The error will be constructed by passing all remaining arguments to [`e`].
 /// See its docs for details on accepted forms.
 #[macro_export]
-macro_rules! ensure_e {
+macro_rules! ensure {
     ($predicate:expr, $($tt:tt)*) => {
         if !$predicate {
             $crate::bail_e!($($tt)*)
