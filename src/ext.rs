@@ -58,7 +58,7 @@ pub trait StdResultExt<T, E> {
 
     /// Converts the result's error into [`AnyError`].
     #[track_caller]
-    fn e(self) -> Result<T, AnyError>;
+    fn anyerr(self) -> Result<T, AnyError>;
 }
 
 impl<T, E: std::error::Error + Send + Sync + 'static> StdResultExt<T, E> for Result<T, E> {
@@ -83,7 +83,7 @@ impl<T, E: std::error::Error + Send + Sync + 'static> StdResultExt<T, E> for Res
         }
     }
 
-    fn e(self) -> Result<T, AnyError> {
+    fn anyerr(self) -> Result<T, AnyError> {
         match self {
             Ok(v) => Ok(v),
             Err(err) => Err(AnyError::from_std(err)),
@@ -114,7 +114,7 @@ impl<T> StdResultExt<T, NoneError> for Option<T> {
         }
     }
 
-    fn e(self) -> Result<T, AnyError> {
+    fn anyerr(self) -> Result<T, AnyError> {
         match self {
             Some(v) => Ok(v),
             None => Err(NoneError { meta: meta() }.into_any()),

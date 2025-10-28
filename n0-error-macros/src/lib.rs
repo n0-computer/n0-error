@@ -558,7 +558,9 @@ fn generate_enum_impls(
             fn as_std(&self) -> &(dyn ::std::error::Error + ::std::marker::Send + ::std::marker::Sync + 'static) {
                 self
             }
-
+            fn into_std(self: ::std::boxed::Box<Self>) -> ::std::boxed::Box<dyn std::error::Error + ::std::marker::Send + ::std::marker::Sync> {
+                self
+            }
             fn as_dyn(&self) -> &(dyn ::n0_error::StackError) {
                 self
             }
@@ -732,6 +734,9 @@ fn generate_struct_impl(
 
         impl #impl_generics ::n0_error::StackError for #item_ident #ty_generics #where_clause {
             fn as_std(&self) -> &(dyn ::std::error::Error + ::std::marker::Send + ::std::marker::Sync + 'static) {
+                self
+            }
+            fn into_std(self: ::std::boxed::Box<Self>) -> ::std::boxed::Box<dyn std::error::Error + ::std::marker::Send + ::std::marker::Sync> {
                 self
             }
             fn as_dyn(&self) -> &(dyn ::n0_error::StackError) {

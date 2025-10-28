@@ -62,8 +62,9 @@ fn print(err: impl StackError) {
 }
 
 pub mod error {
-    use n0_error::{StackError, stack_error};
     use std::io;
+
+    use n0_error::{StackError, stack_error};
 
     #[stack_error(derive, add_meta, from_sources)]
     pub enum OperationError {

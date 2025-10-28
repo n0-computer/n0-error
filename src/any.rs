@@ -96,6 +96,22 @@ impl AnyError {
     pub fn into_boxed_dyn_error(self) -> Box<dyn std::error::Error + Send + Sync + 'static> {
         Box::new(self)
     }
+
+    /// Downcast this error object by reference.
+    pub fn downcast_ref<T: std::error::Error + 'static>(&self) -> Option<&T> {
+        match &self.0 {
+            Inner::Stack(err) => err.as_std().downcast_ref(),
+            Inner::Std(err, _) => err.downcast_ref(),
+        }
+    }
+
+    /// Downcast this error object by reference.
+    pub fn downcast<T: std::error::Error + 'static>(self) -> Option<T> {
+        match self.0 {
+            Inner::Stack(err) => err.into_std().downcast().ok().map(|b| *b),
+            Inner::Std(err, _) => err.downcast().ok().map(|b| *b),
+        }
+    }
 }
 
 impl fmt::Display for AnyError {
@@ -124,6 +140,9 @@ impl fmt::Debug for AnyError {
 
 impl StackError for AnyError {
     fn as_dyn(&self) -> &dyn StackError {
+        self
+    }
+    fn into_std(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync> {
         self
     }
 
