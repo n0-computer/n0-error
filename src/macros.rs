@@ -41,6 +41,13 @@ pub use spez as __spez;
 /// The forms that take `value` use *autoref specialization* to keep the most details possible:
 /// if given a [`StackError`] it uses [`AnyError::from_stack`], if given a std error, uses [`AnyError::from_std`],
 /// if given a value that impls `Display` it uses [`AnyError::from_display`] - in this order.
+///
+/// [`AnyError::context`]: crate::AnyError::context
+/// [`AnyError::from_display`]: crate::AnyError::from_display
+/// [`AnyError::from_stack`]: crate::AnyError::from_stack
+/// [`AnyError::from_std`]: crate::AnyError::from_std
+/// [`AnyError`]: crate::AnyError
+/// [`StackError`]: crate::StackError
 #[macro_export]
 macro_rules! anyerr {
     ($fmt:literal$(, $($arg:expr),* $(,)?)?) => {
@@ -92,6 +99,9 @@ macro_rules! ensure {
 /// to `false`, the macro expands to returning an error result. The error will be constructed
 /// by passing the remaining arguments after the expression to [`anyerr`]. See its docs for
 /// supported forms.
+///
+/// [`AnyError`]: crate::AnyError
+/// [`anyerr`]: crate::anyerr
 #[macro_export]
 macro_rules! ensure_any {
     ($cond:expr, $($tt:tt)*) => {
@@ -116,6 +126,9 @@ macro_rules! bail {
 ///
 /// This macro accepts the same forms as [`anyerr`], but wraps the error into `Err` and
 /// expands to returning the result from the current function.
+///
+/// [`AnyError`]: crate::AnyError
+/// [`anyerr`]: crate::anyerr
 #[macro_export]
 macro_rules! bail_any {
     ($($tt:tt)*) => {
@@ -143,6 +156,8 @@ macro_rules! try_or {
 ///
 /// If the result is the error variant, this will construct a new error with [`anyerr`]
 /// from the result's error while providing additional context.
+///
+/// [`anyerr`]: crate::anyerr
 #[macro_export]
 macro_rules! try_or_any {
     ($result:expr, $($context:tt)*) => {

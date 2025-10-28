@@ -12,7 +12,7 @@ use crate::{ErrorRef, FromString, Meta, SourceFormat, StackError, StackErrorExt}
 /// their call-site location info.
 ///
 /// Errors that implement [`std::error::Error`] but not [`StackError`] can't convert to
-/// [`AnyError`] automatically. Use either [`AnyError::from_std`] or [`crate::StdResultExt::e`]
+/// [`AnyError`] automatically. Use either [`AnyError::from_std`] or [`crate::StdResultExt::anyerr`]
 /// to convert std errors into [`AnyError`].
 ///
 /// This is necessary unfortunately because if we had a blanket conversion from std errors to `AnyError`,

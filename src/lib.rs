@@ -1,10 +1,3 @@
-//! Ergonomic error handling with call-site location tracking.
-//!
-//! This crate provides tools for efficient and ergonomic error handling with support
-//! for tracking the call-site location of errors.
-//!
-//! Inspired by anyhow, thiserror, and snafu.
-
 #![doc = include_str!("../README.md")]
 #![deny(missing_docs)]
 

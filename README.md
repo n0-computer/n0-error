@@ -1,8 +1,14 @@
 # n0-error
 
-**Experimental / Work in progress**
+An error library that supports tracking the call-site location of errors.
 
-A error library that supports tracking the call-site location of errors. Also features an anyhow-style `AnyError`.
+This crate provides a trait and proc macro to ergonomically work with enum or struct errors. The macro can add
+a `meta` field to structs and enum variants, which stores the call-site location of errors. The `StackError`
+trait provides access to this metadata for both the current error, and all its sources, as long as they also
+implement `StackError`.
+
+Additionally, this crate provides an anyhow-style `AnyError` type, which is a type-erased container for either
+`StackError` or `std::error::Error` errors.
 
 ```rust
 use n0_error::{e, stack_error, StackError, Result, StackResultExt, StdResultExt};
