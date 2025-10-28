@@ -51,7 +51,7 @@ fn modify_attrs(args: &StackErrAttrArgs, attrs: &mut Vec<Attribute>) -> Result<(
     }
     let error_args: Vec<_> = [
         args.from_sources.then(|| quote!(from_sources)),
-        args.std_sources.then(|| quote!(then_sources)),
+        args.std_sources.then(|| quote!(std_sources)),
     ]
     .into_iter()
     .flatten()
