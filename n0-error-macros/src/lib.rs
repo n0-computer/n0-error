@@ -24,7 +24,7 @@ fn stack_error_inner(
         syn::Item::Enum(item) => {
             if args.add_meta {
                 for variant in item.variants.iter_mut() {
-                    add_meta_field(&mut variant.fields)?;
+                    add_meta_field(&mut variant.fields);
                 }
             }
             modify_attrs(&args, &mut item.attrs)?;
@@ -32,7 +32,7 @@ fn stack_error_inner(
         }
         syn::Item::Struct(item) => {
             if args.add_meta {
-                add_meta_field(&mut item.fields)?;
+                add_meta_field(&mut item.fields);
             }
             modify_attrs(&args, &mut item.attrs)?;
             Ok(quote! { #item })
@@ -63,62 +63,25 @@ fn modify_attrs(args: &StackErrAttrArgs, attrs: &mut Vec<Attribute>) -> Result<(
     Ok(())
 }
 
-/// Attribute macro that adds a `meta: ::n0_error::Meta` field to a struct or
-/// to all named-field variants of an enum. Does nothing else.
-///
-/// If the struct or an enum variant is currently a unit kind, it will be converted
-/// to a named-field kind.
-///
-/// Tuple structs or variants are supported: for tuple items, the `meta`
-/// field is appended as the last unnamed field.
-#[proc_macro_attribute]
-pub fn add_meta(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    match add_meta_inner(parse_macro_input!(item as syn::Item)) {
-        Err(err) => err.to_compile_error().into(),
-        Ok(tokens) => tokens.into(),
-    }
-}
-
-fn add_meta_inner(mut input: syn::Item) -> Result<proc_macro2::TokenStream, syn::Error> {
-    match &mut input {
-        syn::Item::Enum(item_enum) => {
-            for variant in item_enum.variants.iter_mut() {
-                add_meta_field(&mut variant.fields)?;
-            }
-            Ok(quote! { #item_enum })
-        }
-        syn::Item::Struct(item_struct) => {
-            add_meta_field(&mut item_struct.fields)?;
-            Ok(quote! { #item_struct })
-        }
-        _ => Err(err(&input, "#[add_meta] only supports enums and structs")),
-    }
-}
-
-fn add_meta_field(fields: &mut Fields) -> Result<(), syn::Error> {
+fn add_meta_field(fields: &mut Fields) {
+    let doc = "Captured call-site metadata";
     match fields {
         Fields::Named(fields) => {
-            let field: syn::Field =
-                parse_quote! { #[doc = "Captured call-site metadata"] meta: ::n0_error::Meta };
+            let field: syn::Field = parse_quote! { #[doc = #doc] meta: ::n0_error::Meta };
             fields.named.push(field);
-            Ok(())
         }
         Fields::Unit => {
             let mut named = FieldsNamed {
                 brace_token: Default::default(),
                 named: Default::default(),
             };
-            let field: syn::Field =
-                parse_quote! { #[doc = "Captured call-site metadata"] meta: ::n0_error::Meta };
+            let field: syn::Field = parse_quote! { #[doc = #doc] meta: ::n0_error::Meta };
             named.named.push(field);
             *fields = Fields::Named(named);
-            Ok(())
         }
         Fields::Unnamed(fields) => {
-            // Append meta as last unnamed field for tuple items and mark it explicitly
-            let field: syn::Field = parse_quote! { #[doc = "Captured call-site metadata"] #[error(meta)] ::n0_error::Meta };
+            let field: syn::Field = parse_quote! { #[doc = #doc] #[error(meta)] ::n0_error::Meta };
             fields.unnamed.push(field);
-            Ok(())
         }
     }
 }
@@ -148,18 +111,21 @@ pub fn derive_stack_error(input: TokenStream) -> TokenStream {
 
 fn derive_error_inner(input: DeriveInput) -> Result<proc_macro2::TokenStream, darling::Error> {
     match &input.data {
-        syn::Data::Enum(item_enum) => {
-            let top = EnumAttrArgs::from_attributes(&input.attrs)?;
-            let infos = item_enum
+        syn::Data::Enum(item) => {
+            let args = EnumAttrArgs::from_attributes(&input.attrs)?;
+            let infos = item
                 .variants
                 .iter()
-                .map(|v| VariantInfo::parse(&v.ident, &v.fields, &v.attrs, &top))
+                .map(|v| {
+                    let ident = VariantIdent::Variant(&input.ident, &v.ident);
+                    VariantInfo::parse(ident, &v.fields, &v.attrs, &args)
+                })
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(generate_enum_impls(&input.ident, &input.generics, infos))
         }
         syn::Data::Struct(item) => {
-            let top = EnumAttrArgs::default();
-            let info = VariantInfo::parse(&input.ident, &item.fields, &input.attrs, &top)?;
+            let ident = VariantIdent::Struct(&input.ident);
+            let info = VariantInfo::parse(ident, &item.fields, &input.attrs, &Default::default())?;
             Ok(generate_struct_impl(&input.ident, &input.generics, info))
         }
         _ => Err(err(
@@ -176,17 +142,17 @@ struct SourceField<'a> {
 }
 
 impl<'a> SourceField<'a> {
-    fn expr_error_ref(&self, ident: &Ident) -> proc_macro2::TokenStream {
+    fn expr_error_ref(&self, expr: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         match self.kind {
-            SourceKind::Std => quote! { Some(::n0_error::ErrorRef::std(#ident)) },
-            SourceKind::Stack => quote! { Some(::n0_error::ErrorRef::stack(#ident)) },
+            SourceKind::Std => quote! { Some(::n0_error::ErrorRef::std(#expr)) },
+            SourceKind::Stack => quote! { Some(::n0_error::ErrorRef::stack(#expr)) },
         }
     }
 
-    fn expr_error_std(&self, ident: &Ident) -> proc_macro2::TokenStream {
+    fn expr_error_std(&self, expr: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         match self.kind {
-            SourceKind::Std => quote! { Some(#ident as &dyn ::std::error::Error) },
-            SourceKind::Stack => quote! { Some(::n0_error::StackError::as_std(#ident)) },
+            SourceKind::Std => quote! { Some(#expr as &dyn ::std::error::Error) },
+            SourceKind::Stack => quote! { Some(::n0_error::StackError::as_std(#expr)) },
         }
     }
 }
@@ -222,8 +188,43 @@ struct FieldAttrArgs {
     meta: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum VariantIdent<'a> {
+    Struct(&'a Ident),
+    Variant(&'a Ident, &'a Ident),
+}
+
+impl<'a> VariantIdent<'a> {
+    fn self_ident(&self) -> proc_macro2::TokenStream {
+        match self {
+            VariantIdent::Struct(_) => quote!(Self),
+            VariantIdent::Variant(_, variant) => quote!(Self::#variant),
+        }
+    }
+    fn item_ident(&self) -> &Ident {
+        match self {
+            VariantIdent::Struct(ident) => &ident,
+            VariantIdent::Variant(ident, _) => &ident,
+        }
+    }
+
+    fn inner(&self) -> &Ident {
+        match self {
+            VariantIdent::Struct(ident) => &ident,
+            VariantIdent::Variant(_, ident) => &ident,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Named,
+    Unit,
+    Tuple,
+}
+
 struct VariantInfo<'a> {
-    ident: Ident,
+    ident: VariantIdent<'a>,
     fields: Vec<FieldInfo<'a>>,
     kind: Kind,
     display: DisplayArgs,
@@ -232,6 +233,161 @@ struct VariantInfo<'a> {
     from: Option<FieldInfo<'a>>,
     /// The meta field if present.
     meta: Option<FieldInfo<'a>>,
+}
+
+impl<'a> VariantInfo<'a> {
+    fn parse(
+        ident: VariantIdent<'a>,
+        fields: &'a Fields,
+        attrs: &[Attribute],
+        args: &EnumAttrArgs,
+    ) -> Result<VariantInfo<'a>, syn::Error> {
+        let display = DisplayArgs::parse(&attrs)?;
+        let (kind, fields): (Kind, Vec<FieldInfo>) = match fields {
+            Fields::Named(ref fields) => (
+                Kind::Named,
+                fields
+                    .named
+                    .iter()
+                    .map(FieldInfo::from_named)
+                    .collect::<Result<_, _>>()?,
+            ),
+            Fields::Unit => (Kind::Unit, Vec::new()),
+            Fields::Unnamed(ref fields) => (
+                Kind::Tuple,
+                fields
+                    .unnamed
+                    .iter()
+                    .enumerate()
+                    .map(|(i, f)| FieldInfo::from_unnamed(i, f))
+                    .collect::<Result<_, _>>()?,
+            ),
+        };
+
+        if fields.iter().filter(|f| f.args.source).count() > 1 {
+            return Err(err(
+                ident.inner(),
+                "Only one field per variant may have #[error(source)]",
+            ));
+        }
+        let source_field = fields
+            .iter()
+            .find(|f| f.args.source)
+            .or_else(|| match kind {
+                Kind::Named => fields
+                    .iter()
+                    .find(|f| matches!(f.ident, FieldIdent::Named(name) if name == "source")),
+                Kind::Tuple if display.is_transparent() => fields.first(),
+                _ => None,
+            });
+
+        if display.is_transparent() && source_field.is_none() {
+            return Err(err(
+                ident.inner(),
+                "Variants with #[error(transparent)] require a source field",
+            ));
+        }
+
+        // Determine source kind and optional From based on field options and top-level switches
+        let source = source_field.as_ref().map(|field| {
+            let kind = if field.args.std_err || (args.std_sources && !field.args.stack_err) {
+                SourceKind::Std
+            } else {
+                SourceKind::Stack
+            };
+            SourceField {
+                kind,
+                field: (*field).clone(),
+            }
+        });
+
+        let from_field = fields
+            .iter()
+            .find(|f| f.args.from)
+            .or_else(|| args.from_sources.then(|| source_field).flatten());
+        let meta_field = fields.iter().find(|f| f.is_meta()).cloned();
+        Ok(VariantInfo {
+            ident: ident.clone(),
+            kind,
+            display,
+            from: from_field.cloned(),
+            meta: meta_field,
+            source,
+            fields,
+        })
+    }
+
+    fn transparent(&self) -> Option<&FieldInfo<'_>> {
+        match self.display {
+            DisplayArgs::Transparent => self.source.as_ref().map(|s| &s.field),
+            _ => None,
+        }
+    }
+
+    fn spread_field(&self, field: &FieldInfo<'a>, bind: &Ident) -> proc_macro2::TokenStream {
+        let slf = self.ident.self_ident();
+        match field.ident {
+            FieldIdent::Named(ident) => {
+                quote! { #slf { #ident: #bind, .. } }
+            }
+            FieldIdent::Unnamed(_) => {
+                let pats = self.fields.iter().map(|f| {
+                    if f.ident == field.ident {
+                        quote!(#bind)
+                    } else {
+                        quote!(_)
+                    }
+                });
+                quote! { #slf ( #(#pats),* ) }
+            }
+        }
+    }
+
+    fn spread_empty(&self) -> proc_macro2::TokenStream {
+        let slf = self.ident.self_ident();
+        match self.kind {
+            Kind::Unit => quote! { #slf },
+            Kind::Named => quote! { #slf { .. } },
+            Kind::Tuple => {
+                let pats = std::iter::repeat(quote! { _ }).take(self.fields.len());
+                quote! { #slf ( #(#pats),* ) }
+            }
+        }
+    }
+
+    fn spread_all(&self) -> proc_macro2::TokenStream {
+        let binds = self.fields.iter().map(|f| f.ident.as_ident());
+        self.spread(binds.map(|i| quote!(#i)))
+    }
+
+    fn spread(
+        &self,
+        fields: impl Iterator<Item = proc_macro2::TokenStream>,
+    ) -> proc_macro2::TokenStream {
+        let slf = self.ident.self_ident();
+        match self.kind {
+            Kind::Unit => quote! { #slf },
+            Kind::Named => quote! { #slf { #(#fields),* } },
+            Kind::Tuple => quote! { #slf ( #(#fields),* ) },
+        }
+    }
+
+    fn from_impl(&self) -> Option<(&syn::Type, proc_macro2::TokenStream)> {
+        self.from.as_ref().map(|from_field| {
+            let ty = &from_field.field.ty;
+            let fields = self.fields.iter().map(|field| {
+                if field.ident == from_field.ident {
+                    field.ident.init(quote!(source))
+                } else if field.is_meta() {
+                    field.ident.init(quote!(::n0_error::Meta::new()))
+                } else {
+                    field.ident.init(quote!(::std::default::Default::default()))
+                }
+            });
+            let construct = self.spread(fields);
+            (ty, construct)
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -262,14 +418,7 @@ impl<'a> FieldInfo<'a> {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Kind {
-    Named,
-    Unit,
-    Tuple,
-}
-
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 enum FieldIdent<'a> {
     Named(&'a Ident),
     Unnamed(usize),
@@ -282,193 +431,28 @@ impl<'a> FieldIdent<'a> {
             _ => None,
         }
     }
+
+    fn as_ident(&self) -> Ident {
+        match self {
+            FieldIdent::Named(ident) => (*ident).clone(),
+            FieldIdent::Unnamed(i) => syn::Ident::new(&format!("_{}", i), Span::call_site()),
+        }
+    }
+
     fn self_expr(&self) -> proc_macro2::TokenStream {
         match self {
-            FieldIdent::Named(ident) => {
-                quote!(self.#ident)
-            }
-            FieldIdent::Unnamed(num) => {
-                quote!(self.#num)
-            }
-        }
-    }
-}
-
-impl<'a> VariantInfo<'a> {
-    fn transparent(&self) -> Option<&FieldInfo<'_>> {
-        match self.display {
-            DisplayArgs::Transparent => self.source.as_ref().map(|s| &s.field),
-            _ => None,
-        }
-    }
-
-    fn field_binding_idents(&self) -> impl Iterator<Item = Ident> + '_ {
-        self.fields.iter().map(|f| match f.ident {
-            FieldIdent::Named(ident) => ident.clone(),
-            FieldIdent::Unnamed(i) => syn::Ident::new(&format!("_{}", i), Span::call_site()),
-        })
-    }
-
-    fn has_meta(&self) -> bool {
-        self.meta.is_some()
-    }
-
-    fn fields_without_meta(&self) -> impl Iterator<Item = &FieldInfo<'a>> {
-        self.fields.iter().filter(|f| !f.is_meta())
-    }
-
-    fn field_idents_without_meta(&self) -> impl Iterator<Item = Ident> + '_ {
-        self.fields_without_meta().map(|f| match f.ident {
-            FieldIdent::Named(ident) => ident.clone(),
-            FieldIdent::Unnamed(i) => syn::Ident::new(&format!("_{}", i), Span::call_site()),
-        })
-    }
-
-    fn parse(
-        ident: &Ident,
-        fields: &'a Fields,
-        attrs: &[Attribute],
-        top: &EnumAttrArgs,
-    ) -> Result<VariantInfo<'a>, syn::Error> {
-        let display = DisplayArgs::parse(&attrs)?;
-        let (kind, fields): (Kind, Vec<FieldInfo>) = match fields {
-            Fields::Named(ref fields) => (
-                Kind::Named,
-                fields
-                    .named
-                    .iter()
-                    .map(FieldInfo::from_named)
-                    .collect::<Result<_, _>>()?,
-            ),
-            Fields::Unit => (Kind::Unit, Vec::new()),
-            Fields::Unnamed(ref fields) => (
-                Kind::Tuple,
-                fields
-                    .unnamed
-                    .iter()
-                    .enumerate()
-                    .map(|(i, f)| FieldInfo::from_unnamed(i, f))
-                    .collect::<Result<_, _>>()?,
-            ),
-        };
-
-        if fields.iter().filter(|f| f.args.source).count() > 1 {
-            return Err(err(
-                ident,
-                "Only one field per variant may have #[error(source)]",
-            ));
-        }
-        let source_field = fields
-            .iter()
-            .find(|f| f.args.source)
-            .or_else(|| match kind {
-                Kind::Named => fields.iter().find(|f| match f.ident {
-                    FieldIdent::Named(name) => name == "source",
-                    _ => false,
-                }),
-                Kind::Tuple => {
-                    if display.is_transparent() {
-                        fields.first()
-                    } else {
-                        None
-                    }
-                }
-                Kind::Unit => None,
-            });
-
-        if display.is_transparent() && source_field.is_none() {
-            return Err(err(
-                ident,
-                "Variants with #[error(transparent)] require a source field",
-            ));
-        }
-
-        // Determine source kind and optional From based on field options and top-level switches
-        let source = match source_field.as_ref() {
-            None => None,
-            Some(field) => {
-                let kind = if field.args.std_err || (top.std_sources && !field.args.stack_err) {
-                    SourceKind::Std
-                } else {
-                    SourceKind::Stack
-                };
-                let field = (*field).clone();
-                Some(SourceField { kind, field })
-            }
-        };
-
-        let from_field = fields
-            .iter()
-            .find(|f| f.args.from)
-            .or_else(|| top.from_sources.then(|| source_field).flatten());
-        let from_field = from_field.cloned();
-        let meta_field = fields.iter().find(|f| f.is_meta()).cloned();
-        Ok(VariantInfo {
-            ident: ident.clone(),
-            fields,
-            kind,
-            display,
-            source,
-            from: from_field,
-            meta: meta_field,
-        })
-    }
-
-    // Pattern helpers
-    fn spread_field(&self, field: &FieldInfo<'a>, token: &Ident) -> proc_macro2::TokenStream {
-        let v_ident = &self.ident;
-        match (self.kind, field.ident) {
-            (Kind::Named, FieldIdent::Named(ident)) => {
-                quote! { Self::#v_ident { #ident: #token, .. } }
-            }
-            (Kind::Tuple, FieldIdent::Unnamed(idx)) => {
-                let pats = (0..self.fields.len()).map(|i| {
-                    if i == idx {
-                        quote! { #token }
-                    } else {
-                        quote! { _ }
-                    }
-                });
-                quote! { Self::#v_ident ( #(#pats),* ) }
-            }
-            _ => unreachable!("Invalid call to spread_field"),
-        }
-    }
-
-    fn spread_empty(&self) -> proc_macro2::TokenStream {
-        let v_ident = &self.ident;
-        match self.kind {
-            Kind::Unit => quote! { Self::#v_ident },
-            Kind::Named => quote! { Self::#v_ident { .. } },
-            Kind::Tuple => {
-                let pats = std::iter::repeat(quote! { _ }).take(self.fields.len());
-                quote! { Self::#v_ident ( #(#pats),* ) }
+            FieldIdent::Named(ident) => quote!(self.#ident),
+            FieldIdent::Unnamed(i) => {
+                let idx = syn::Index::from(*i);
+                quote!(self.#idx)
             }
         }
     }
 
-    fn spread_all(&self, binds: &[Ident]) -> proc_macro2::TokenStream {
-        let v_ident = &self.ident;
-        match self.kind {
-            Kind::Named => {
-                let pairs = self
-                    .fields
-                    .iter()
-                    .flat_map(|f| f.ident.named())
-                    .zip(binds.iter())
-                    .map(|(ident, bind)| {
-                        if *ident == *bind {
-                            quote! { #ident }
-                        } else {
-                            quote! { #ident: #bind }
-                        }
-                    });
-                quote! { #[allow(unused)] Self::#v_ident { #( #pairs ),* } }
-            }
-            Kind::Tuple => {
-                quote! { #[allow(unused)] Self::#v_ident ( #( #binds ),* ) }
-            }
-            Kind::Unit => quote! { Self::#v_ident },
+    fn init(&self, expr: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+        match self {
+            FieldIdent::Named(ident) => quote!(#ident: #expr),
+            FieldIdent::Unnamed(_) => quote!(#expr),
         }
     }
 }
@@ -478,7 +462,6 @@ fn generate_enum_impls(
     generics: &syn::Generics,
     variants: Vec<VariantInfo>,
 ) -> proc_macro2::TokenStream {
-    // StackError impl pieces
     let match_meta_arms = variants.iter().map(|vi| {
         if let Some(meta_field) = &vi.meta {
             let bind = syn::Ident::new("__meta", Span::call_site());
@@ -492,9 +475,9 @@ fn generate_enum_impls(
 
     let match_source_arms = variants.iter().map(|vi| match &vi.source {
         Some(src) => {
-            let bind = syn::Ident::new("__src", Span::call_site());
+            let bind = syn::Ident::new("__source", Span::call_site());
             let pat = vi.spread_field(&src.field, &bind);
-            let expr = src.expr_error_ref(&bind);
+            let expr = src.expr_error_ref(quote!(#bind));
             quote! { #pat => #expr, }
         }
         None => {
@@ -505,9 +488,9 @@ fn generate_enum_impls(
 
     let match_std_source_arms = variants.iter().map(|vi| match &vi.source {
         Some(src) => {
-            let bind = syn::Ident::new("source", Span::call_site());
+            let bind = syn::Ident::new("__source", Span::call_site());
             let pat = vi.spread_field(&src.field, &bind);
-            let expr = src.expr_error_std(&bind);
+            let expr = src.expr_error_std(quote!(#bind));
             quote! { #pat => #expr, }
         }
         None => {
@@ -524,21 +507,23 @@ fn generate_enum_impls(
 
     let match_fmt_message_arms = variants.iter().map(|vi| match &vi.display {
         DisplayArgs::Format(expr) => {
-            let binds: Vec<Ident> = vi.field_binding_idents().collect();
-            let pat = vi.spread_all(&binds);
-            quote! { #pat => { #expr } }
+            let pat = vi.spread_all();
+            quote! {
+                #[allow(unused)]
+                #pat => { #expr }
+            }
         }
         DisplayArgs::Default | DisplayArgs::Transparent => {
-            let text = format!("{}::{}", enum_ident, vi.ident);
+            let text = format!("{}::{}", vi.ident.item_ident(), vi.ident.inner());
             let pat = vi.spread_empty();
             quote! { #pat => write!(f, #text) }
         }
     });
 
     let match_debug_arms = variants.iter().map(|vi| {
-        let v_name = vi.ident.to_string();
-        let binds: Vec<Ident> = vi.field_binding_idents().collect();
-        let pat = vi.spread_all(&binds);
+        let v_name = vi.ident.inner().to_string();
+        let binds = vi.fields.iter().map(|f| f.ident.as_ident());
+        let pat = vi.spread_all();
         let labels: Vec<String> = vi
             .fields
             .iter()
@@ -557,35 +542,13 @@ fn generate_enum_impls(
 
     // From impls for variant fields marked with #[from]
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let from_impls = variants.iter().filter_map(|vi| vi.from.as_ref().map(|field| (vi, field))).map(|(vi, field)| {
-        let v_ident = &vi.ident;
-        let ty = &field.field.ty;
-        let construct = match (vi.kind, field.ident) {
-            (Kind::Named, FieldIdent::Named(ident)) => {
-                let meta = vi.meta.as_ref().map(|_| quote!( meta: ::n0_error::Meta::new() ));
-                let comma = (meta.is_some() && vi.fields.len() > 1).then(|| quote!(,));
-                quote! { Self::#v_ident { #ident: source #comma #meta } }
-            }
-            (Kind::Tuple, FieldIdent::Unnamed(src_idx)) => {
-                let total = vi.fields.len();
-                let mut exprs: Vec<proc_macro2::TokenStream> = Vec::with_capacity(total);
-                for i in 0..total {
-                    if i == src_idx { exprs.push(quote!{ source }); }
-                    else if let Some(meta_field) = &vi.meta {
-                        if let FieldIdent::Unnamed(mi) = meta_field.ident { if mi == i { exprs.push(quote!{ ::n0_error::Meta::new() }); continue; } }
-                        exprs.push(quote!{ ::core::compile_error!("unsupported From impl: extra fields present") });
-                    } else {
-                        exprs.push(quote!{ ::core::compile_error!("unsupported From impl: extra fields present") });
-                    }
-                }
-                quote! { Self::#v_ident( #(#exprs),* ) }
-            }
-            _ => unreachable!(),
-        };
+    let from_impls = variants.iter().filter_map(|vi| vi.from_impl()).map(|(ty, construct)| {
         quote! {
             impl #impl_generics ::core::convert::From<#ty> for #enum_ident #ty_generics #where_clause {
                 #[track_caller]
-                fn from(source: #ty) -> Self { #construct }
+                fn from(source: #ty) -> Self {
+                    #construct
+                }
             }
         }
     });
@@ -599,19 +562,16 @@ fn generate_enum_impls(
             fn as_dyn(&self) -> &(dyn ::n0_error::StackError) {
                 self
             }
-
             fn fmt_message(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 match self {
                     #( #match_fmt_message_arms, )*
                 }
             }
-
             fn meta(&self) -> Option<&::n0_error::Meta> {
                 match self {
                     #( #match_meta_arms, )*
                 }
             }
-
             fn source(&self) -> Option<::n0_error::ErrorRef<'_>> {
                 match self {
                     #( #match_source_arms )*
@@ -632,22 +592,19 @@ fn generate_enum_impls(
 
         impl #impl_generics ::std::fmt::Display for #enum_ident #ty_generics #where_clause {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                use ::n0_error::{SourceFormat, StackError};
-                let sources = f.alternate().then_some(SourceFormat::OneLine);
-                write!(f, "{}", self.report().sources(sources))
+                let sources = f.alternate().then_some(::n0_error::SourceFormat::OneLine);
+                write!(f, "{}", ::n0_error::StackError::report(self).sources(sources))
             }
         }
 
         impl #impl_generics ::std::fmt::Debug for #enum_ident #ty_generics #where_clause {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                use ::n0_error::StackErrorExt;
                 if f.alternate() {
                     match self {
                         #(#match_debug_arms)*
                     }
                 } else {
-                    use ::n0_error::StackError;
-                    write!(f, "{}", self.report().full())?;
+                    write!(f, "{}", ::n0_error::StackError::report(self).full())?;
                 }
                 Ok(())
             }
@@ -670,116 +627,67 @@ fn generate_struct_impl(
     info: VariantInfo,
 ) -> proc_macro2::TokenStream {
     let constructor = {
-        let params = info.fields_without_meta().map(|f| {
+        let params = info.fields.iter().filter(|f| !f.is_meta()).map(|f| {
             let ty = &f.field.ty;
-            match f.ident {
-                FieldIdent::Named(ident) => quote! { #ident: #ty },
-                FieldIdent::Unnamed(i) => {
-                    let arg = syn::Ident::new(&format!("_{}", i), Span::call_site());
-                    quote! { #arg: #ty }
-                }
+            let ident = f.ident.as_ident();
+            quote! { #ident: #ty }
+        });
+        let fields = info.fields.iter().map(|f| {
+            if f.is_meta() {
+                f.ident.init(quote!(::n0_error::Meta::new()))
+            } else {
+                let ident = f.ident.as_ident();
+                quote!(#ident)
             }
         });
-        let names = info.field_idents_without_meta();
-        let meta_named = info
-            .meta
-            .as_ref()
-            .map(|_| quote!(meta: ::n0_error::Meta::new()));
-        let meta_tuple = info.meta.as_ref().map(|_| quote!(::n0_error::Meta::new()));
-        let comma = (info.has_meta() && info.fields.len() > 1).then(|| quote!(,));
+        let construct = info.spread(fields);
         let doc = format!("Creates a new [`{}`] error.", item_ident);
-        let construct = match info.kind {
-            Kind::Unit => quote! { Self },
-            Kind::Named => quote! { Self { #(#names),* #comma #meta_named } },
-            Kind::Tuple => quote! { Self( #(#names),* #comma #meta_tuple ) },
-        };
         quote! {
             #[doc = #doc]
             #[track_caller]
             pub fn new(#(#params),*) -> Self { #construct }
         }
     };
-    let get_meta = if let Some(meta_field) = &info.meta {
-        match meta_field.ident {
-            FieldIdent::Named(ident) => quote!(Some(&self.#ident)),
-            FieldIdent::Unnamed(i) => {
-                let idx = syn::Index::from(i);
-                quote!(Some(&self.#idx))
-            }
-        }
+    let get_meta = if let Some(field) = &info.meta {
+        let get_expr = field.ident.self_expr();
+        quote! { Some(&#get_expr) }
     } else {
         quote! { None }
     };
 
     let get_error_source = match &info.source {
-        Some(src) => {
-            let bind = syn::Ident::new("source", Span::call_site());
-            let getter = match src.field.ident {
-                FieldIdent::Named(id) => quote! { let #bind = &self.#id; },
-                FieldIdent::Unnamed(i) => {
-                    let idx = syn::Index::from(i);
-                    quote! { let #bind = &self.#idx; }
-                }
-            };
-            let expr = src.expr_error_ref(&bind);
-            quote! {{ #getter #expr }}
-        }
+        Some(src) => src.expr_error_ref(src.field.ident.self_expr()),
         None => quote! { None },
     };
 
     let get_std_source = match &info.source {
-        Some(src) => {
-            let bind = syn::Ident::new("source", Span::call_site());
-            let getter = match src.field.ident {
-                FieldIdent::Named(id) => quote! { let #bind = &self.#id; },
-                FieldIdent::Unnamed(i) => {
-                    let idx = syn::Index::from(i);
-                    quote! { let #bind = &self.#idx; }
-                }
-            };
-            let expr = src.expr_error_std(&bind);
-            quote! {{ #getter #expr }}
-        }
+        Some(src) => src.expr_error_std(src.field.ident.self_expr()),
         None => quote! { None },
     };
 
     let is_transparent = info.transparent().is_some();
 
-    let get_display = {
-        if let Some(field) = info.transparent() {
-            let expr = field.ident.self_expr();
-            quote! { write!(f, "{}", #expr) }
-        } else {
-            match &info.display {
-                DisplayArgs::Format(expr) => {
-                    let binds: Vec<Ident> = info.field_binding_idents().collect();
-                    match info.kind {
-                        Kind::Unit => quote! { #expr },
-                        Kind::Named => {
-                            quote! { #[allow(unused)] let Self { #( #binds ),* , .. } = self; #expr }
-                        }
-                        Kind::Tuple => {
-                            quote! { #[allow(unused)] let Self( #( #binds ),* ) = self; #expr }
-                        }
-                    }
+    let get_fmt_message = {
+        match &info.display {
+            DisplayArgs::Format(expr) => {
+                let pat = info.spread_all();
+                quote! {
+                   #[allow(unused)]
+                   let #pat = self;
+                   #expr
                 }
-                DisplayArgs::Default | DisplayArgs::Transparent => {
-                    // Fallback to struct name
-                    let text = info.ident.to_string();
-                    quote! { write!(f, #text) }
-                }
+            }
+            DisplayArgs::Default | DisplayArgs::Transparent => {
+                let text = info.ident.item_ident().to_string();
+                quote! { write!(f, #text) }
             }
         }
     };
 
     let get_debug = {
-        let item_name = info.ident.to_string();
+        let item_name = info.ident.item_ident().to_string();
         match info.kind {
-            Kind::Unit => {
-                quote! {
-                    write!(f, #item_name)?;
-                }
-            }
+            Kind::Unit => quote!(write!(f, #item_name)?;),
             Kind::Named => {
                 let fields = info
                     .fields
@@ -808,48 +716,14 @@ fn generate_struct_impl(
 
     // From impls for fields marked with #[error(from)] (or inferred via from_sources)
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let get_from = if let Some(field) = &info.from {
-        let ty = &field.field.ty;
-        let construct = match (info.kind, field.ident) {
-            (Kind::Named, FieldIdent::Named(ident)) => {
-                let meta = info
-                    .meta
-                    .as_ref()
-                    .map(|_| quote!( meta: ::n0_error::Meta::new() ));
-                let comma = (meta.is_some() && info.fields.len() > 1).then(|| quote!(,));
-                quote! { Self { #ident: source #comma #meta } }
-            }
-            (Kind::Tuple, FieldIdent::Unnamed(src_idx)) => {
-                let total = info.fields.len();
-                let mut exprs: Vec<proc_macro2::TokenStream> = Vec::with_capacity(total);
-                for i in 0..total {
-                    if i == src_idx {
-                        exprs.push(quote! { source });
-                    } else if let Some(meta_field) = &info.meta {
-                        if let FieldIdent::Unnamed(mi) = meta_field.ident {
-                            if mi == i {
-                                exprs.push(quote! { ::n0_error::Meta::new() });
-                                continue;
-                            }
-                        }
-                        exprs.push(quote!{ ::core::compile_error!("unsupported From impl: extra fields present") });
-                    } else {
-                        exprs.push(quote!{ ::core::compile_error!("unsupported From impl: extra fields present") });
-                    }
-                }
-                quote! { Self( #(#exprs),* ) }
-            }
-            _ => unreachable!(),
-        };
-        Some(quote! {
+    let from_impl = info.from_impl().map(|(ty, construct)| {
+        quote! {
             impl #impl_generics ::core::convert::From<#ty> for #item_ident #ty_generics #where_clause {
                 #[track_caller]
                 fn from(source: #ty) -> Self { #construct }
             }
-        })
-    } else {
-        None
-    };
+        }
+    });
 
     quote! {
         impl #impl_generics #item_ident #ty_generics #where_clause {
@@ -860,11 +734,9 @@ fn generate_struct_impl(
             fn as_std(&self) -> &(dyn ::std::error::Error + ::std::marker::Send + ::std::marker::Sync + 'static) {
                 self
             }
-
             fn as_dyn(&self) -> &(dyn ::n0_error::StackError) {
                 self
             }
-
             fn meta(&self) -> Option<&::n0_error::Meta> {
                 #get_meta
             }
@@ -874,9 +746,8 @@ fn generate_struct_impl(
             fn is_transparent(&self) -> bool {
                 #is_transparent
             }
-
             fn fmt_message(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                #get_display
+                #get_fmt_message
             }
         }
 
@@ -889,9 +760,8 @@ fn generate_struct_impl(
 
         impl #impl_generics ::std::fmt::Display for #item_ident #ty_generics #where_clause {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                use ::n0_error::{SourceFormat, StackError};
-                let sources = f.alternate().then_some(SourceFormat::OneLine);
-                write!(f, "{}", self.report().sources(sources))
+                let sources = f.alternate().then_some(::n0_error::SourceFormat::OneLine);
+                write!(f, "{}", ::n0_error::StackError::report(self).sources(sources))
             }
         }
 
@@ -900,8 +770,7 @@ fn generate_struct_impl(
                 if f.alternate() {
                     #get_debug
                 } else {
-                    use ::n0_error::StackError;
-                    write!(f, "{}", self.report().full())?;
+                    write!(f, "{}", ::n0_error::StackError::report(self).full())?;
                 }
                 Ok(())
             }
@@ -913,7 +782,7 @@ fn generate_struct_impl(
             }
         }
 
-        #get_from
+        #from_impl
     }
 }
 
@@ -934,7 +803,6 @@ impl DisplayArgs {
             return Ok(DisplayArgs::Default);
         };
 
-        // syn 2: parse args inside the attribute's parentheses
         let args: Punctuated<Expr, syn::Token![,]> =
             attr.parse_args_with(Punctuated::<Expr, syn::Token![,]>::parse_terminated)?;
 
@@ -957,16 +825,13 @@ impl DisplayArgs {
         // #[error("...", args...)]
         let mut it = args.into_iter();
         let first = it.next().unwrap();
-
         let fmt_lit = match first {
-        Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(s), .. }) => s,
-        other => {
-            return Err(err(
+            Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(s), .. }) => s,
+            other => return Err(err(
                 other,
                 "first argument to #[error(\"...\")] must be a string literal, or use #[error(transparent)]",
             ))
-        }
-    };
+        };
 
         let rest: Vec<Expr> = it.collect();
         Ok(DisplayArgs::Format(

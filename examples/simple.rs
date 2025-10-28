@@ -1,6 +1,6 @@
 use std::io;
 
-use n0_error::{StackError, e, meta};
+use n0_error::{StackError, err, meta};
 
 use self::error::CopyError;
 use crate::error::{InvalidArgsError, OperationError};
@@ -19,17 +19,17 @@ fn main() {
     print(err);
 
     println!("### InvalidArgs");
-    let err = e!(InvalidArgsError::FailedToParse);
-    let err = e!(CopyError::InvalidArgs, err);
+    let err = err!(InvalidArgsError::FailedToParse);
+    let err = err!(CopyError::InvalidArgs, err);
     // let err = e!(CopyError::InvalidArgs { source: err });
     // let err = CopyError!(InvalidArgs { source: err });
-    let err = e!(OperationError::Copy { source: err });
+    let err = err!(OperationError::Copy { source: err });
     print(err);
 }
 
 fn _some_fn() -> Result<(), CopyError> {
     // Err! macro works like e! but wraps in Err
-    Err(e!(CopyError::Read, io::Error::other("yada")))
+    Err(err!(CopyError::Read, io::Error::other("yada")))
 }
 
 fn operation() -> Result<(), OperationError> {
@@ -39,7 +39,7 @@ fn operation() -> Result<(), OperationError> {
 }
 
 fn copy() -> Result<(), CopyError> {
-    read().map_err(|err| e!(CopyError::Read { source: err }))?;
+    read().map_err(|err| err!(CopyError::Read { source: err }))?;
     Ok(())
 }
 
@@ -62,19 +62,16 @@ fn print(err: impl StackError) {
 }
 
 pub mod error {
-    use n0_error::{StackError, add_meta};
+    use n0_error::{StackError, stack_error};
     use std::io;
 
-    #[add_meta]
-    #[derive(StackError)]
-    #[error(from_sources)]
+    #[stack_error(derive, add_meta, from_sources)]
     pub enum OperationError {
         /// Failed to copy
         Copy { source: CopyError },
     }
 
-    #[add_meta]
-    #[derive(StackError)]
+    #[stack_error(derive, add_meta)]
     pub enum CopyError {
         /// Read error
         Read {
@@ -102,7 +99,7 @@ pub mod error {
         Foo,
     }
 
-    #[add_meta]
+    #[stack_error(add_meta)]
     #[derive(StackError)]
     pub enum InvalidArgsError {
         /// Failed to parse arguments

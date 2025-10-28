@@ -5,27 +5,28 @@
 A error library that supports tracking the call-site location of errors. Also features an anyhow-style `AnyError`.
 
 ```rust
-use n0_error::{e, add_meta, StackError, Result, StackResultExt, StdResultExt};
+use n0_error::{err, stack_error, StackError, Result, StackResultExt, StdResultExt};
 
-// Adds a `meta` field to all variants to track call-site error location.
-#[add_meta]
-// Derives the various impls for our error.
-#[derive(StackError)]
-// Automatically create From impls from the error sources
-#[error(from_sources)]
+/// The `stack_error` macro controls how to turn our enum into a `StackError`.
+///
+/// * `add_meta` adds a field to all variants to track the call-site error location
+/// * `derive` adds `#[derive(StackError)]`
+/// * `from_sources` creates `From` impls for the error sources
+#[stack_error(derive, add_meta, from_sources)]
 enum MyError {
-    // A custom validation error
-    #[error("bad input: {count}")]
+    /// We can define the error message with the `error` attribute
+    #[error("bad input ({count})")]
     BadInput { count: usize },
-    // Wrap a std::io::Error as a source (std error)
+    /// Or we can define a variant as `transparent`, which forwards the Display impl to the error source
     #[error("IO error")]
     Io {
+        /// For sources that do not implement `StackError`, we have to mark te source as `std_err`.
         #[error(std_err)]
         source: std::io::Error,
     },
 }
 
-// A function that returns a std io::Error
+// A function that returns a std::io::Error
 fn fail_io() -> std::io::Result<()> {
     Err(std::io::Error::other("io failed"))
 }
@@ -33,13 +34,14 @@ fn fail_io() -> std::io::Result<()> {
 // An outer function returning our custom MyError
 fn some_fn(count: usize) -> Result<(), MyError> {
     if count == 13 {
-        return Err(e!(MyError::BadInput { count }));
+        // The `err` macro constructs a `StackError` while automatically adding the `meta` field.
+        return Err(err!(MyError::BadInput { count }));
     }
-    // We have a From impl for std::io::Error on our error.
+    // We have a `From` impl for `std::io::Error` on our error.
     fail_io()?;
     // Without the From impl, we'd need to forward the error manually.
-    // The `e` macro can assist here, so that we don't have to declare the `meta` field manually.
-    fail_io().map_err(|source| e!(MyError::Io, source))?;
+    // The `err` macro can assist here, so that we don't have to declare the `meta` field manually.
+    fail_io().map_err(|source| err!(MyError::Io, source))?;
     Ok(())
 }
 
@@ -54,27 +56,21 @@ fn run() -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let res = run();
-    if let Err(err) = run() {
-        println!("{err}");
-        // This prints:
-        // Error: failed at some_fn
-        // Caused by:
-        //    0: bad input: 0
-    }
+    let err = run().unwrap_err();
+    assert_eq!(
+        format!("{err:#}"),
+        "failed at some_fn: bad input (13)"
+    );
     Ok(())
 }
 
-// You can also use the macros with tuple structs or enums.
-// In this case the meta field will be added as the last field.
-
-#[add_meta]
-#[derive(StackError)]
+/// You can also use the macros with tuple structs or enums.
+/// In this case the meta field will be added as the last field.
+#[stack_error(derive, add_meta)]
 #[error("tuple fail ({_0})")]
 struct TupleStruct(u32);
 
-#[add_meta]
-#[derive(StackError)]
+#[stack_error(derive, add_meta)]
 enum TupleEnum {
     #[error("io failed")]
     Io(#[error(source, std_err)] std::io::Error),

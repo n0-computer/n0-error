@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{AnyError, StackError, StackErrorExt, add_meta, meta};
+use crate::{AnyError, StackError, StackErrorExt, meta, stack_error};
 
 /// Provides extension methods to add context to [`StackError`]s.
 pub trait StackResultExt<T, E> {
@@ -147,14 +147,12 @@ impl<T> StackResultExt<T, NoneError> for Option<T> {
 }
 
 /// Error returned when converting [`Option`]s to an error.
-#[add_meta]
-#[derive(crate::StackError)]
+#[stack_error(derive, add_meta)]
 #[error("Expected some, found none")]
 pub struct NoneError {}
 
 /// A simple string error, providing a message and optionally a source.
-#[add_meta]
-#[derive(crate::StackError)]
+#[stack_error(derive, add_meta)]
 pub(crate) enum FromString {
     #[error("{message}")]
     WithSource { message: String, source: AnyError },

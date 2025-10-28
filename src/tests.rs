@@ -2,8 +2,8 @@ use std::io;
 
 use self::util::wait_sequential;
 use crate::{
-    AnyError, Result, StackError, StackErrorExt, StackResultExt, StdResultExt, add_meta, anyerr, e,
-    ensure_any, format_err, meta, set_backtrace_enabled,
+    AnyError, Result, StackError, StackErrorExt, StackResultExt, StdResultExt, anyerr, ensure_any,
+    err, format_err, meta, set_backtrace_enabled, stack_error,
 };
 mod util;
 
@@ -16,7 +16,7 @@ fn test_anyhow_compat() -> Result {
     ok().map_err(AnyError::from_anyhow)
 }
 
-#[add_meta]
+#[stack_error(add_meta)]
 #[derive(StackError)]
 enum MyError {
     #[error("A failure")]
@@ -263,11 +263,11 @@ fn test_structs() {
     assert_eq!(format!("{err2:#}"), "bad: fail (22)");
 }
 
-#[add_meta]
+#[stack_error(add_meta)]
 #[derive(StackError)]
 struct SomeErrorLoc;
 
-#[add_meta]
+#[stack_error(add_meta)]
 #[derive(StackError)]
 #[error("fail ({code})")]
 struct SomeErrorLocFields {
@@ -308,7 +308,7 @@ Caused by:
 
 #[test]
 fn test_context() {
-    #[add_meta]
+    #[stack_error(add_meta)]
     #[derive(StackError)]
     enum AppError {
         My { source: MyError },
@@ -330,13 +330,13 @@ fn test_context() {
     println!("---");
     println!(
         "{:?}",
-        fail_a().map_err(|s| e!(AppError::My, s)).unwrap_err()
+        fail_a().map_err(|s| err!(AppError::My, s)).unwrap_err()
     );
     println!("---");
     println!(
         "{:?}",
         fail_a()
-            .map_err(|source| e!(AppError::Baz { source, count: 32 }))
+            .map_err(|source| err!(AppError::Baz { source, count: 32 }))
             .unwrap_err()
     );
     println!("---");
@@ -353,7 +353,7 @@ fn test_any() {
     // let x = foo();
     let x = anyerr!("foo");
     println!("{x:?}");
-    let x = anyerr!(e!(MyError::A));
+    let x = anyerr!(err!(MyError::A));
     println!("{x:?}");
     let x = anyerr!(io::Error::other("foo"));
     println!("{x:?}");
@@ -361,7 +361,7 @@ fn test_any() {
 
 // --- tuple support tests ---
 
-#[add_meta]
+#[stack_error(add_meta)]
 #[derive(StackError)]
 #[error("tuple fail ({_0})")]
 struct TupleStruct(u32);
@@ -374,7 +374,7 @@ fn test_tuple_struct_basic() {
     assert_eq!(format!("{err}"), "tuple fail (7)");
 }
 
-#[add_meta]
+#[stack_error(add_meta)]
 #[derive(StackError)]
 #[error(from_sources)]
 enum TupleEnum {
@@ -395,12 +395,12 @@ fn test_tuple_enum_source_and_meta() {
     let src = std::error::Error::source(&e).unwrap();
     assert_eq!(src.to_string(), "oops");
 
-    let err = e!(MyError::A);
+    let err = err!(MyError::A);
     let err = TupleEnum::from(err);
     assert_eq!(format!("{err}"), "A failure");
     assert_eq!(format!("{err:?}"), "A failure");
     n0_error::set_backtrace_enabled(true);
-    let err = e!(MyError::A);
+    let err = err!(MyError::A);
     let err = TupleEnum::from(err);
     assert_eq!(
         format!("{err:?}"),
@@ -411,7 +411,7 @@ fn test_tuple_enum_source_and_meta() {
 // TODO: turn into actual test
 #[test]
 pub fn test_skip_transparent_errors() {
-    #[add_meta]
+    #[stack_error(add_meta)]
     #[derive(StackError)]
     #[error(from_sources)]
     enum ErrorA {
@@ -419,7 +419,7 @@ pub fn test_skip_transparent_errors() {
         ErrorB { source: ErrorB },
     }
 
-    #[add_meta]
+    #[stack_error(add_meta)]
     #[derive(StackError)]
     #[error(std_sources)]
     enum ErrorB {
@@ -438,7 +438,7 @@ pub fn test_skip_transparent_errors() {
         if transparent {
             io().map_err(|err| ErrorB::IoTransparent(err, meta()))
         } else {
-            io().map_err(|err| e!(ErrorB::Io, err))
+            io().map_err(|err| err!(ErrorB::Io, err))
         }
     }
 
@@ -485,14 +485,14 @@ pub fn test_skip_transparent_errors() {
 
 #[test]
 fn test_generics() {
-    #[add_meta]
+    #[stack_error(add_meta)]
     #[derive(StackError)]
     #[error("failed at {}", list.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", "))]
     struct GenericError<E: std::fmt::Display + std::fmt::Debug + Send + Sync + 'static> {
         list: Vec<E>,
     }
 
-    #[add_meta]
+    #[stack_error(add_meta)]
     #[derive(StackError)]
     enum GenericEnumError<E: std::fmt::Display + std::fmt::Debug + Send + Sync + 'static> {
         Foo,
@@ -507,7 +507,7 @@ fn test_generics() {
 
     let err = GenericError::new(vec!["foo", "bar"]);
     assert_eq!(format!("{err}"), "failed at foo, bar");
-    let err = e!(GenericEnumError::Baz {
+    let err = err!(GenericEnumError::Baz {
         other: Box::new("foo")
     });
     assert_eq!(format!("{err}"), "failed at foo");

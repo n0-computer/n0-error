@@ -4,7 +4,7 @@
 /// - `e!(MyError::Variant, source)` constructs `MyError::Variant { source, meta: Meta::default() }`.
 /// - `e!(MyError::Variant { field: value, other })` constructs `MyError::Variant { field: value, other, meta: Meta::default() }`
 #[macro_export]
-macro_rules! e {
+macro_rules! err {
     // No fields
     ($($err:tt)::+) => {
         $($err)::+ { meta: $crate::Meta::default() }
@@ -36,7 +36,7 @@ macro_rules! try_or {
         match $result {
             ::core::result::Result::Ok(v) => v,
             ::core::result::Result::Err(e) => {
-                return ::core::result::Result::Err($crate::e!($($tt)*, e));
+                return ::core::result::Result::Err($crate::err!($($tt)*, e));
             }
         }
     };
@@ -139,7 +139,7 @@ pub use spez as __spez;
 #[macro_export]
 macro_rules! anyerr {
     ($fmt:literal$(, $($arg:expr),* $(,)?)?) => {
-        $crate::format_err!($fmt$(, $($arg),*)*)
+        $crate::anyerr!(::std::format!($fmt$(, $($arg),*)*))
     };
 
     ($err:expr, $fmt:literal$(, $($arg:expr),* $(,)?)?) => {
@@ -163,24 +163,4 @@ macro_rules! anyerr {
             }
         }
     };
-
-    ($($err:tt)::+) => {
-        $($err)::+ { meta: $crate::Meta::default() }
-    };
-
-    // Single expression: treat as source
-    ($($err:tt)::+ , $source:expr) => {
-        $($err)::+ { source: $source, meta: $crate::Meta::default() }
-    };
-
-    // Fields and values plus source
-    ($($err:tt)::+ { $($body:tt)* }, $source:expr) => {
-        $($err)::+ { meta: $crate::Meta::default(), source: $source, $($body)* }
-    };
-
-    // Fields and values
-    ($($err:tt)::+ { $($body:tt)* }) => {
-        $($err)::+ { meta: $crate::Meta::default(), $($body)* }
-    };
-
 }
