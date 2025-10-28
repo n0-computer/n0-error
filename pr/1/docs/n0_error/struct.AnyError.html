@@ -2,7 +2,7 @@
 <p><a href="trait.StackError.html" title="trait n0_error::StackError"><code>StackError</code></a>s have a blanket impl to convert into <a href="struct.AnyError.html" title="struct n0_error::AnyError"><code>AnyError</code></a>, while preserving
 their call-site location info.</p>
 <p>Errors that implement <a href="https://doc.rust-lang.org/nightly/core/error/trait.Error.html" title="trait core::error::Error"><code>std::error::Error</code></a> but not <a href="trait.StackError.html" title="trait n0_error::StackError"><code>StackError</code></a> can’t convert to
-<a href="struct.AnyError.html" title="struct n0_error::AnyError"><code>AnyError</code></a> automatically. Use either <a href="struct.AnyError.html#method.from_std" title="associated function n0_error::AnyError::from_std"><code>AnyError::from_std</code></a> or [<code>crate::StdResultExt::e</code>]
+<a href="struct.AnyError.html" title="struct n0_error::AnyError"><code>AnyError</code></a> automatically. Use either <a href="struct.AnyError.html#method.from_std" title="associated function n0_error::AnyError::from_std"><code>AnyError::from_std</code></a> or <a href="trait.StdResultExt.html#tymethod.anyerr" title="method n0_error::StdResultExt::anyerr"><code>crate::StdResultExt::anyerr</code></a>
 to convert std errors into <a href="struct.AnyError.html" title="struct n0_error::AnyError"><code>AnyError</code></a>.</p>
 <p>This is necessary unfortunately because if we had a blanket conversion from std errors to <code>AnyError</code>,
 this blanket conversion would also apply to <a href="trait.StackError.html" title="trait n0_error::StackError"><code>StackError</code></a>s, thus losing their call-site location
