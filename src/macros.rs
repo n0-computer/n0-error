@@ -31,7 +31,7 @@ macro_rules! e {
 /// If the result is the error variant, this will construct a new error with [`e`]
 /// that takes the result's error as its source.
 #[macro_export]
-macro_rules! try_e {
+macro_rules! try_or {
     ($result:expr, $($tt:tt)*) => {
         match $result {
             ::core::result::Result::Ok(v) => v,
@@ -47,7 +47,7 @@ macro_rules! try_e {
 /// If the result is the error variant, this will construct a new error with [`anyerr`]
 /// from the result's error while providing additional context.
 #[macro_export]
-macro_rules! try_any {
+macro_rules! try_or_any {
     ($result:expr, $($context:tt)*) => {
         match $result {
             ::core::result::Result::Ok(v) => v,
@@ -138,16 +138,8 @@ pub use spez as __spez;
 /// if given a value that impls `Display` it uses [`AnyError::from_display`] - in this order.
 #[macro_export]
 macro_rules! anyerr {
-    ($fmt:literal) => {
-        $crate::format_err!($fmt)
-    };
-
     ($fmt:literal$(, $($arg:expr),* $(,)?)?) => {
         $crate::format_err!($fmt$(, $($arg),*)*)
-    };
-
-    ($err:expr, $fmt:literal) => {
-        $crate::anyerr!($err).context($fmt)
     };
 
     ($err:expr, $fmt:literal$(, $($arg:expr),* $(,)?)?) => {
@@ -171,4 +163,24 @@ macro_rules! anyerr {
             }
         }
     };
+
+    ($($err:tt)::+) => {
+        $($err)::+ { meta: $crate::Meta::default() }
+    };
+
+    // Single expression: treat as source
+    ($($err:tt)::+ , $source:expr) => {
+        $($err)::+ { source: $source, meta: $crate::Meta::default() }
+    };
+
+    // Fields and values plus source
+    ($($err:tt)::+ { $($body:tt)* }, $source:expr) => {
+        $($err)::+ { meta: $crate::Meta::default(), source: $source, $($body)* }
+    };
+
+    // Fields and values
+    ($($err:tt)::+ { $($body:tt)* }) => {
+        $($err)::+ { meta: $crate::Meta::default(), $($body)* }
+    };
+
 }

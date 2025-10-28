@@ -35,12 +35,12 @@ fn test_whatever() {
     }
 
     fn fail_whatever() -> Result {
-        n0_error::try_any!(fail(), "sad");
+        n0_error::try_or_any!(fail(), "sad");
         Ok(())
     }
 
     fn fail_whatever_my_error() -> Result {
-        n0_error::try_any!(fail_my_error(), "sad");
+        n0_error::try_or_any!(fail_my_error(), "sad");
         Ok(())
     }
 
