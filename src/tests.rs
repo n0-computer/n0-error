@@ -3,7 +3,7 @@ use std::io;
 use self::util::wait_sequential;
 use crate::{
     AnyError, Result, StackError, StackErrorExt, StackResultExt, StdResultExt, anyerr, ensure_any,
-    err, format_err, meta, set_backtrace_enabled, stack_error,
+    e, format_err, meta, set_backtrace_enabled, stack_error,
 };
 mod util;
 
@@ -330,13 +330,13 @@ fn test_context() {
     println!("---");
     println!(
         "{:?}",
-        fail_a().map_err(|s| err!(AppError::My, s)).unwrap_err()
+        fail_a().map_err(|s| e!(AppError::My, s)).unwrap_err()
     );
     println!("---");
     println!(
         "{:?}",
         fail_a()
-            .map_err(|source| err!(AppError::Baz { source, count: 32 }))
+            .map_err(|source| e!(AppError::Baz { source, count: 32 }))
             .unwrap_err()
     );
     println!("---");
@@ -353,7 +353,7 @@ fn test_any() {
     // let x = foo();
     let x = anyerr!("foo");
     println!("{x:?}");
-    let x = anyerr!(err!(MyError::A));
+    let x = anyerr!(e!(MyError::A));
     println!("{x:?}");
     let x = anyerr!(io::Error::other("foo"));
     println!("{x:?}");
@@ -395,12 +395,12 @@ fn test_tuple_enum_source_and_meta() {
     let src = std::error::Error::source(&e).unwrap();
     assert_eq!(src.to_string(), "oops");
 
-    let err = err!(MyError::A);
+    let err = e!(MyError::A);
     let err = TupleEnum::from(err);
     assert_eq!(format!("{err}"), "A failure");
     assert_eq!(format!("{err:?}"), "A failure");
     n0_error::set_backtrace_enabled(true);
-    let err = err!(MyError::A);
+    let err = e!(MyError::A);
     let err = TupleEnum::from(err);
     assert_eq!(
         format!("{err:?}"),
@@ -438,7 +438,7 @@ pub fn test_skip_transparent_errors() {
         if transparent {
             io().map_err(|err| ErrorB::IoTransparent(err, meta()))
         } else {
-            io().map_err(|err| err!(ErrorB::Io, err))
+            io().map_err(|err| e!(ErrorB::Io, err))
         }
     }
 
@@ -507,7 +507,7 @@ fn test_generics() {
 
     let err = GenericError::new(vec!["foo", "bar"]);
     assert_eq!(format!("{err}"), "failed at foo, bar");
-    let err = err!(GenericEnumError::Baz {
+    let err = e!(GenericEnumError::Baz {
         other: Box::new("foo")
     });
     assert_eq!(format!("{err}"), "failed at foo");

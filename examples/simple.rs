@@ -1,6 +1,6 @@
 use std::io;
 
-use n0_error::{StackError, err, meta};
+use n0_error::{StackError, e, meta};
 
 use self::error::CopyError;
 use crate::error::{InvalidArgsError, OperationError};
@@ -19,17 +19,17 @@ fn main() {
     print(err);
 
     println!("### InvalidArgs");
-    let err = err!(InvalidArgsError::FailedToParse);
-    let err = err!(CopyError::InvalidArgs, err);
+    let err = e!(InvalidArgsError::FailedToParse);
+    let err = e!(CopyError::InvalidArgs, err);
     // let err = e!(CopyError::InvalidArgs { source: err });
     // let err = CopyError!(InvalidArgs { source: err });
-    let err = err!(OperationError::Copy { source: err });
+    let err = e!(OperationError::Copy { source: err });
     print(err);
 }
 
 fn _some_fn() -> Result<(), CopyError> {
     // Err! macro works like e! but wraps in Err
-    Err(err!(CopyError::Read, io::Error::other("yada")))
+    Err(e!(CopyError::Read, io::Error::other("yada")))
 }
 
 fn operation() -> Result<(), OperationError> {
@@ -39,7 +39,7 @@ fn operation() -> Result<(), OperationError> {
 }
 
 fn copy() -> Result<(), CopyError> {
-    read().map_err(|err| err!(CopyError::Read { source: err }))?;
+    read().map_err(|err| e!(CopyError::Read { source: err }))?;
     Ok(())
 }
 

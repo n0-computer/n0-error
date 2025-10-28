@@ -4,7 +4,7 @@
 /// - `e!(MyError::Variant, source)` constructs `MyError::Variant { source, meta: Meta::default() }`.
 /// - `e!(MyError::Variant { field: value, other })` constructs `MyError::Variant { field: value, other, meta: Meta::default() }`
 #[macro_export]
-macro_rules! err {
+macro_rules! e {
     // No fields
     ($($err:tt)::+) => {
         $($err)::+ { meta: $crate::Meta::default() }
@@ -36,7 +36,7 @@ macro_rules! try_or {
         match $result {
             ::core::result::Result::Ok(v) => v,
             ::core::result::Result::Err(e) => {
-                return ::core::result::Result::Err($crate::err!($($tt)*, e));
+                return ::core::result::Result::Err($crate::e!($($tt)*, e));
             }
         }
     };

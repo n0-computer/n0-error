@@ -18,9 +18,9 @@ enum MyError {
     #[error("bad input ({count})")]
     BadInput { count: usize },
     /// Or we can define a variant as `transparent`, which forwards the Display impl to the error source
-    #[error("IO error")]
+    #[error(transparent)]
     Io {
-        /// For sources that do not implement `StackError`, we have to mark te source as `std_err`.
+        /// For sources that do not implement `StackError`, we have to mark the source as `std_err`.
         #[error(std_err)]
         source: std::io::Error,
     },
