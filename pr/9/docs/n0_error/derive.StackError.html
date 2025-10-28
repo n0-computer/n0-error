@@ -1,0 +1,30 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Derive macro that implements StackError, Display, Debug, std::error::Error, and generates `From&#60;T&#62;` impls for fields/variants configured via `#[error(..)]`."><title>StackError in n0_error - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-dbdb5eec.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="n0_error" data-themes="" data-resource-suffix="" data-rustdoc-version="1.85.0-nightly (d10a6823f 2024-11-29)" data-channel="nightly" data-search-js="search-92e6798f.js" data-settings-js="settings-0f613d39.js" ><script src="../static.files/storage-59e33391.js"></script><script defer src="sidebar-items.js"></script><script defer src="../static.files/main-5f194d8c.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc derive"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../n0_error/index.html">n0_<wbr>error</a><span class="version">0.1.0</span></h2></div><div class="sidebar-elems"><div id="rustdoc-modnav"></div></div></nav><div class="sidebar-resizer"></div><main><div class="width-limiter"><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><span class="rustdoc-breadcrumbs"><a href="index.html">n0_error</a></span><h1>Derive Macro <span class="derive">StackError</span><button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"></span></div><pre class="rust item-decl"><code>#[derive(StackError)]
+{
+    <span class="comment">// Attributes available to this derive:</span>
+    #[error]
+}
+</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Derive macro that implements StackError, Display, Debug, std::error::Error,
+and generates <code>From&lt;T&gt;</code> impls for fields/variants configured via <code>#[error(..)]</code>.</p>
+<p>Recognized attributes:</p>
+<ul>
+<li>on enums:
+<ul>
+<li><code>#[error(from_sources)]</code>: Creates <code>From</code> impls for the <code>source</code> types of all variants. Will fail to compile if multiple sources have the same type.</li>
+<li><code>#[error(std_sources)]</code>: Defaults all sources to be std errors instead of stack errors.</li>
+</ul>
+</li>
+<li>on enum variants and structs:
+<ul>
+<li><code>#[error("format {field}: {}", a + b)]</code>: Sets the display formatting. You can refer to named fields by their names, and to tuple fields by <code>_0</code>, <code>_1</code> etc.</li>
+<li><code>#[error(transparent)]</code>: Directly forwards the display implementation to the error source, and omits the outer error in the source chain when reporting errors.</li>
+</ul>
+</li>
+<li>on fields:
+<ul>
+<li><code>#[error(source)]</code>: Sets a field as the source of this error. If a field is named <code>source</code> this is applied implicitly and not needed.</li>
+<li><code>#[error(from)]</code>: Creates a <code>From</code> impl for the field’s type to the error type.</li>
+<li><code>#[error(std_err)]</code>: Marks the error as a <code>std</code> error. Without this attribute, errors are expected to implement <code>StackError</code>. Only applicable to source fields.</li>
+</ul>
+</li>
+</ul>
+</div></details></section></div></main></body></html>
