@@ -4,11 +4,11 @@ use crate::{AnyError, StackError, StackErrorExt, meta, stack_error};
 
 /// Provides extension methods to add context to [`StackError`]s.
 pub trait StackResultExt<T, E> {
-    /// Wraps the result's error value with additional context.
+    /// Converts the result's error value to [`AnyError`] while providing additional context.
     #[track_caller]
     fn context(self, context: impl fmt::Display) -> Result<T, AnyError>;
 
-    /// Wraps the result's error value with lazily-evaluated additional context.
+    /// Converts the result's error value to [`AnyError`] while providing lazily-evaluated additional context.
     ///
     /// The `context` closure is only invoked if an error occurs.
     #[track_caller]
@@ -42,12 +42,17 @@ impl<T, E: StackError + 'static> StackResultExt<T, E> for Result<T, E> {
 }
 
 /// Provides extension methods to add context to std errors.
+///
+/// You should only call these methods on results that contain errors which do not implement [`StackError`].
+/// For results with `StackError`s, instead use the methods from [`StackResultExt`]. The latter will
+/// preserve call-site metadata, whereas using the methods from the [`StdResultExt`] will lose the
+/// call-site metadata when called on a `StackError` result.
 pub trait StdResultExt<T, E> {
-    /// Wraps the result's error value with additional context.
+    /// Converts the result's error value to [`AnyError`] while providing additional context.
     #[track_caller]
     fn std_context(self, context: impl fmt::Display) -> Result<T, AnyError>;
 
-    /// Wraps the result's error value with lazily-evaluated additional context.
+    /// Converts the result's error value to [`AnyError`] while providing lazily-evaluated additional context.
     ///
     /// The `context` closure is only invoked if an error occurs.
     #[track_caller]
@@ -57,6 +62,11 @@ pub trait StdResultExt<T, E> {
         C: fmt::Display;
 
     /// Converts the result's error into [`AnyError`].
+    ///
+    /// You should make sure to only call this on results that contain an error which does *not*
+    /// implement [`StackError`]. If it *does* implement [`StackError`] you can simply convert
+    /// the result's error to [`AnyError`] with the `?` operator. If you use `anyerr` on
+    /// `StackError`s, you will lose access to the error's call-site metadata.
     #[track_caller]
     fn anyerr(self) -> Result<T, AnyError>;
 }
