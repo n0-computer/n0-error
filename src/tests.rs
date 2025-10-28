@@ -2,8 +2,8 @@ use std::io;
 
 use self::util::wait_sequential;
 use crate::{
-    AnyError, Result, StackError, StackErrorExt, StackResultExt, StdResultExt, anyerr, ensure_any,
-    e, format_err, meta, set_backtrace_enabled, stack_error,
+    AnyError, Result, StackError, StackErrorExt, StackResultExt, StdResultExt, anyerr, e,
+    ensure_any, meta, set_backtrace_enabled, stack_error,
 };
 mod util;
 
@@ -27,7 +27,7 @@ fn test_whatever() {
     let _guard = wait_sequential();
 
     fn fail() -> Result {
-        n0_error::bail!("sad face");
+        n0_error::bail_any!("sad face");
     }
 
     fn fail_my_error() -> Result<(), MyError> {
@@ -102,7 +102,7 @@ fn test_context_none() {
 #[test]
 fn test_format_err() {
     fn fail() -> Result {
-        Err(format_err!("sad: {}", 12))
+        Err(anyerr!("sad: {}", 12))
     }
 
     assert!(fail().is_err());
