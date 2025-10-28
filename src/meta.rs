@@ -8,6 +8,7 @@ pub struct Location(&'static std::panic::Location<'static>);
 /// Captured metadata for an error creation site.
 ///
 /// Currently this only contains the call-site [`Location`].
+#[derive(Clone)]
 pub struct Meta {
     location: Option<Location>,
 }

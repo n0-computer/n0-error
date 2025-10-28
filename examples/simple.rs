@@ -62,19 +62,16 @@ fn print(err: impl StackError) {
 }
 
 pub mod error {
-    use n0_error::{StackError, add_meta};
+    use n0_error::{StackError, stack_error};
     use std::io;
 
-    #[add_meta]
-    #[derive(StackError)]
-    #[error(from_sources)]
+    #[stack_error(derive, add_meta, from_sources)]
     pub enum OperationError {
         /// Failed to copy
         Copy { source: CopyError },
     }
 
-    #[add_meta]
-    #[derive(StackError)]
+    #[stack_error(derive, add_meta)]
     pub enum CopyError {
         /// Read error
         Read {
@@ -102,7 +99,7 @@ pub mod error {
         Foo,
     }
 
-    #[add_meta]
+    #[stack_error(add_meta)]
     #[derive(StackError)]
     pub enum InvalidArgsError {
         /// Failed to parse arguments
