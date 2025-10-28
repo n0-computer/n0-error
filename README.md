@@ -5,7 +5,7 @@
 A error library that supports tracking the call-site location of errors. Also features an anyhow-style `AnyError`.
 
 ```rust
-use n0_error::{err, stack_error, StackError, Result, StackResultExt, StdResultExt};
+use n0_error::{e, stack_error, StackError, Result, StackResultExt, StdResultExt};
 
 /// The `stack_error` macro controls how to turn our enum into a `StackError`.
 ///
@@ -34,14 +34,14 @@ fn fail_io() -> std::io::Result<()> {
 // An outer function returning our custom MyError
 fn some_fn(count: usize) -> Result<(), MyError> {
     if count == 13 {
-        // The `err` macro constructs a `StackError` while automatically adding the `meta` field.
-        return Err(err!(MyError::BadInput { count }));
+        // The `e` macro constructs a `StackError` while automatically adding the `meta` field.
+        return Err(e!(MyError::BadInput { count }));
     }
     // We have a `From` impl for `std::io::Error` on our error.
     fail_io()?;
     // Without the From impl, we'd need to forward the error manually.
-    // The `err` macro can assist here, so that we don't have to declare the `meta` field manually.
-    fail_io().map_err(|source| err!(MyError::Io, source))?;
+    // The `e` macro can assist here, so that we don't have to declare the `meta` field manually.
+    fail_io().map_err(|source| e!(MyError::Io, source))?;
     Ok(())
 }
 
