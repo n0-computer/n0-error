@@ -22,6 +22,9 @@ pub trait StackError: fmt::Display + fmt::Debug + Send + Sync {
     /// Returns this error as a std error reference.
     fn as_std(&self) -> &(dyn std::error::Error + Send + Sync + 'static);
 
+    /// Returns this error as a std error.
+    fn into_std(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync>;
+
     /// Returns this error as a `dyn StackError`.
     fn as_dyn(&self) -> &dyn StackError;
 
@@ -86,18 +89,21 @@ impl<T: StackError + Sized + 'static> StackErrorExt for T {}
 #[derive(Copy, Clone, Debug)]
 pub enum ErrorRef<'a> {
     /// Std error (no location info).
-    Std(&'a dyn std::error::Error, Option<&'a Meta>),
+    Std(&'a (dyn std::error::Error + 'static), Option<&'a Meta>),
     /// StackError (has location info).
     Stack(&'a dyn StackError),
 }
 
 impl<'a> ErrorRef<'a> {
     /// Creates a [`ErrorRef`] for a std error.
-    pub fn std(err: &dyn std::error::Error) -> ErrorRef<'_> {
+    pub fn std(err: &'a (dyn std::error::Error + 'static)) -> ErrorRef<'a> {
         ErrorRef::Std(err, None)
     }
 
-    pub(crate) fn std_with_meta(err: &'a dyn std::error::Error, meta: &'a Meta) -> ErrorRef<'a> {
+    pub(crate) fn std_with_meta(
+        err: &'a (dyn std::error::Error + 'static),
+        meta: &'a Meta,
+    ) -> ErrorRef<'a> {
         ErrorRef::Std(err, Some(meta))
     }
 
@@ -115,7 +121,7 @@ impl<'a> ErrorRef<'a> {
     }
 
     /// Returns the error as a std error.
-    pub fn as_std(&self) -> &dyn std::error::Error {
+    pub fn as_std(self) -> &'a dyn std::error::Error {
         match self {
             ErrorRef::Std(error, _) => error,
             ErrorRef::Stack(error) => error.as_std(),
@@ -148,6 +154,14 @@ impl<'a> ErrorRef<'a> {
         match self {
             ErrorRef::Std(error, _) => fmt::Display::fmt(error, f),
             ErrorRef::Stack(error) => error.fmt_message(f),
+        }
+    }
+
+    /// Downcast this error object by reference.
+    pub fn downcast_ref<T: std::error::Error + 'static>(self) -> Option<&'a T> {
+        match self {
+            ErrorRef::Std(error, _) => error.downcast_ref(),
+            ErrorRef::Stack(error) => error.as_std().downcast_ref(),
         }
     }
 }
@@ -306,6 +320,10 @@ macro_rules! impl_stack_error_for_std_error {
                 self
             }
 
+            fn into_std(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync> {
+                self
+            }
+
             fn as_dyn(&self) -> &dyn StackError {
                 self
             }
@@ -336,54 +354,54 @@ impl_stack_error_for_std_error!(std::string::FromUtf8Error);
 impl_stack_error_for_std_error!(std::net::AddrParseError);
 impl_stack_error_for_std_error!(std::array::TryFromSliceError);
 
-impl StackError for Box<dyn StackError> {
-    fn as_std(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
-        StackError::as_std(&**self)
-    }
+// impl StackError for Box<dyn StackError> {
+//     fn as_std(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
+//         StackError::as_std(&**self)
+//     }
 
-    fn as_dyn(&self) -> &dyn StackError {
-        StackError::as_dyn(&**self)
-    }
+//     fn as_dyn(&self) -> &dyn StackError {
+//         StackError::as_dyn(&**self)
+//     }
 
-    fn meta(&self) -> Option<&Meta> {
-        StackError::meta(&**self)
-    }
+//     fn meta(&self) -> Option<&Meta> {
+//         StackError::meta(&**self)
+//     }
 
-    fn source(&self) -> Option<ErrorRef<'_>> {
-        StackError::source(&**self)
-    }
+//     fn source(&self) -> Option<ErrorRef<'_>> {
+//         StackError::source(&**self)
+//     }
 
-    fn fmt_message(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        StackError::fmt_message(&**self, f)
-    }
+//     fn fmt_message(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         StackError::fmt_message(&**self, f)
+//     }
 
-    fn is_transparent(&self) -> bool {
-        StackError::is_transparent(&**self)
-    }
-}
+//     fn is_transparent(&self) -> bool {
+//         StackError::is_transparent(&**self)
+//     }
+// }
 
-impl StackError for std::sync::Arc<dyn StackError> {
-    fn as_std(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
-        StackError::as_std(&**self)
-    }
+// impl StackError for std::sync::Arc<dyn StackError> {
+//     fn as_std(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
+//         StackError::as_std(&**self)
+//     }
 
-    fn as_dyn(&self) -> &dyn StackError {
-        StackError::as_dyn(&**self)
-    }
+//     fn as_dyn(&self) -> &dyn StackError {
+//         StackError::as_dyn(&**self)
+//     }
 
-    fn meta(&self) -> Option<&Meta> {
-        StackError::meta(&**self)
-    }
+//     fn meta(&self) -> Option<&Meta> {
+//         StackError::meta(&**self)
+//     }
 
-    fn source(&self) -> Option<ErrorRef<'_>> {
-        StackError::source(&**self)
-    }
+//     fn source(&self) -> Option<ErrorRef<'_>> {
+//         StackError::source(&**self)
+//     }
 
-    fn fmt_message(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        StackError::fmt_message(&**self, f)
-    }
+//     fn fmt_message(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         StackError::fmt_message(&**self, f)
+//     }
 
-    fn is_transparent(&self) -> bool {
-        StackError::is_transparent(&**self)
-    }
-}
+//     fn is_transparent(&self) -> bool {
+//         StackError::is_transparent(&**self)
+//     }
+// }

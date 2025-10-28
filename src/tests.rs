@@ -119,7 +119,7 @@ fn test_io_err() {
     }
 
     fn fail_outer() -> Result {
-        fail_io().e()?;
+        fail_io().anyerr()?;
         fail_custom()?;
         Ok(())
     }
@@ -511,4 +511,23 @@ fn test_generics() {
         other: Box::new("foo")
     });
     assert_eq!(format!("{err}"), "failed at foo");
+}
+
+#[test]
+fn downcast() {
+    let err = e!(MyError::A).into_any();
+    let err_ref: &MyError = err.downcast_ref().unwrap();
+    assert!(matches!(err_ref, MyError::A { .. }));
+    let err: MyError = err.downcast().unwrap();
+    assert!(matches!(err, MyError::A { .. }));
+
+    let err = anyerr!(io::Error::other("foo"));
+    let err_ref: &io::Error = err.downcast_ref().unwrap();
+    assert!(matches!(err_ref.kind(), io::ErrorKind::Other));
+    let err: io::Error = err.downcast().unwrap();
+    assert!(matches!(err.kind(), io::ErrorKind::Other));
+
+    let err = e!(MyError::A).context("foo");
+    let err_ref: &MyError = err.source().unwrap().downcast_ref().unwrap();
+    assert!(matches!(err_ref, MyError::A { .. }));
 }
