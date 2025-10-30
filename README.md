@@ -2,8 +2,12 @@
 
 An error library that supports tracking the call-site location of errors.
 
-This crate provides a [`StackError`] trait and [`stack_error`] proc macro to ergonomically
-work with enum or struct errors.
+This crate provides a `StackError` trait and proc macro to ergonomically work with nested
+enum and struct errors, while allowing to track the call-site location for the
+full error chain.
+
+It also has a `AnyError` type that works similar to anyhow errors while keeping
+the location metadata of `StackError` errors accessible through the full error chain.
 
 ## Example
 
