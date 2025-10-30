@@ -42,7 +42,10 @@ use syn::{
 /// #[error(from_sources)]
 /// enum MyError {
 ///     #[error("io failed")]
-///     Io { source: std::io::Error, meta: n0_error::Meta },
+///     Io {
+///         source: std::io::Error,
+///         meta: n0_error::Meta,
+///     },
 ///     #[error("remote failed with {_0}")]
 ///     RemoteErrorCode(u32, #[error(meta)] n0_error::Meta),
 /// }
