@@ -33,7 +33,7 @@ use syn::{
 ///     #[error("io failed")]
 ///     Io { source: std::io::Error },
 ///     #[error("remote failed with {_0}")]
-///     RemoteErrorCode(u32)
+///     RemoteErrorCode(u32),
 /// }
 /// ```
 /// expands to
@@ -42,9 +42,9 @@ use syn::{
 /// #[error(from_sources)]
 /// enum MyError {
 ///     #[error("io failed")]
-///     Io { source: std::io::Error, meta: n0_error::Meta }
+///     Io { source: std::io::Error, meta: n0_error::Meta },
 ///     #[error("remote failed with {_0}")]
-///     RemoteErrorCode(u32, #[error(meta)] n0_error::Meta)
+///     RemoteErrorCode(u32, #[error(meta)] n0_error::Meta),
 /// }
 /// ```
 #[proc_macro_attribute]
