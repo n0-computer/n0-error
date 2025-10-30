@@ -63,6 +63,10 @@
 //!   ```
 //! * Alternate debug impl  `{error:#?}`: An output similar to how the `#[derive(Debug)]` output looks.
 //!
+//! ### Feature flags
+//!
+//! * `anyhow` (off by default): Enables `From<anyhow::Error> for AnyError`
+//!
 //! ## Example
 //!
 //! ```rust

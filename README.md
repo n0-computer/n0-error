@@ -76,8 +76,7 @@ Caused by:
     wanted 23 but got 13 (examples/basic.rs:48:13)
 ```
 
-
-### Features
+### Details
 
 - All errors using the macro implement the `StackError` trait, which exposes call-site metadata for
   where the error occurred. Its `source` method returns references which may be other stack errors,
@@ -98,6 +97,10 @@ Caused by:
       `std::error::Error`s to `AnyError`, with support for attaching context.
 - Both `AnyError` and all errors using the `StackError` derive feature consistent, structured output
   that includes location metadata when available.
+
+### Feature flags
+
+* `anyhow` (off by default): Enables `From<anyhow::Error> for AnyError` and `From<AnyError> for anyhow::Error`
 
 ## License
 

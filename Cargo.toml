@@ -2,6 +2,12 @@
 name = "n0-error"
 version = "0.1.0"
 edition = "2024"
+readme = "README.md"
+description = "ergonomic errors with call-site location"
+license = "MIT OR Apache-2.0"
+authors = ["Frando <franz@n0.computer>", "n0 team"]
+repository = "https://github.com/n0-computer/n0-error"
+keywords = ["error", "backtrace", "location"]
 
 [dependencies]
 n0-error-macros = { path = "n0-error-macros" }
@@ -17,5 +23,5 @@ inherits = 'dev'
 opt-level = 1
 
 [features]
-default = ["anyhow"]
+default = []
 anyhow = ["dep:anyhow"]
