@@ -1,17 +1,21 @@
 # n0-error
 
-An error library that supports tracking the call-site location of errors.
+[![Documentation](https://docs.rs/n0-error/badge.svg)](https://docs.rs/n0-error)
+[![Crates.io](https://img.shields.io/crates/v/n0-error.svg)](https://crates.io/crates/n0-error)
 
-This crate provides a trait and proc macro to ergonomically work with enum or struct errors. The macro can add
-a `meta` field to structs and enum variants, which stores the call-site location of errors. The `StackError`
-trait provides access to this metadata for both the current error, and all its sources, as long as they also
-implement `StackError`.
+An Rust error library that supports tracking the call-site location of errors.
 
-Additionally, this crate provides an anyhow-style `AnyError` type, which is a type-erased container for either
-`StackError` or `std::error::Error` errors.
+This crate provides a `StackError` trait and proc macro to ergonomically work with nested
+enum and struct errors, while allowing to track the call-site location for the
+full error chain.
+
+It also has a `AnyError` type that works similar to anyhow errors while keeping
+the location metadata of `StackError` errors accessible through the full error chain.
+
+## Example
 
 ```rust
-use n0_error::{e, stack_error, StackError, Result, StackResultExt, StdResultExt};
+use n0_error::{e, ensure, Result, StackResultExt, stack_error};
 
 /// The `stack_error` macro controls how to turn our enum into a `StackError`.
 ///
@@ -21,9 +25,9 @@ use n0_error::{e, stack_error, StackError, Result, StackResultExt, StdResultExt}
 #[stack_error(derive, add_meta, from_sources)]
 enum MyError {
     /// We can define the error message with the `error` attribute
-    #[error("bad input ({count})")]
-    BadInput { count: usize },
-    /// Or we can define a variant as `transparent`, which forwards the Display impl to the error source
+    #[error("invalid input")]
+    InvalidInput { source: InvalidInput },
+    /// Or we can define a variant as `transparent`, which forwards the Display impl to the error source.
     #[error(transparent)]
     Io {
         /// For sources that do not implement `StackError`, we have to mark the source as `std_err`.
@@ -32,54 +36,85 @@ enum MyError {
     },
 }
 
-// A function that returns a std::io::Error
-fn fail_io() -> std::io::Result<()> {
-    Err(std::io::Error::other("io failed"))
+/// We can use the [`stack_error`] macro on structs as well.
+#[stack_error(derive, add_meta)]
+#[error("wanted {expected} but got {actual}")]
+struct InvalidInput {
+    expected: u32,
+    actual: u32,
 }
 
-// An outer function returning our custom MyError
-fn some_fn(count: usize) -> Result<(), MyError> {
-    if count == 13 {
-        // The `e` macro constructs a `StackError` while automatically adding the `meta` field.
-        return Err(e!(MyError::BadInput { count }));
+fn validate_input(input: u32) -> Result<(), InvalidInput> {
+    if input != 23 {
+        // With the `e` macro we can construct an error directly without spelling out the `meta` field:
+        return Err(e!(InvalidInput { expected: 12, actual: input }))
     }
-    // We have a `From` impl for `std::io::Error` on our error.
-    fail_io()?;
-    // Without the From impl, we'd need to forward the error manually.
-    // The `e` macro can assist here, so that we don't have to declare the `meta` field manually.
-    fail_io().map_err(|source| e!(MyError::Io, source))?;
+    /// There's also `bail` and `ensure` macros that expand to include the `meta` field:
+    n0_error::ensure!(input == 23, InvalidInput { expected: 23, actual: input });
     Ok(())
 }
 
-// A main function that returns AnyError (via the crate's Result alias)
-fn run() -> Result<()> {
-    // We can add context to errors via the result extensions.
-    // The `context` function adds context to any `StackError`.
-    some_fn(13).context("failed at some_fn")?;
-    // To add context to std errors, we have to use `std_context` from `StdResultExt`.
-    fail_io().std_context("failed at fail_io")?;
+/// The `Result` type defaults to `AnyError` for the error variant.
+///
+/// Errors types using the derive macro convert to `AnyError`, and we can add additional context
+/// with the result extensions.
+fn process(input: u32) -> Result<()> {
+    validate_input(input).context("failed to process input")?;
     Ok(())
 }
-
-fn main() -> Result<()> {
-    let err = run().unwrap_err();
-    assert_eq!(
-        format!("{err:#}"),
-        "failed at some_fn: bad input (13)"
-    );
-    Ok(())
-}
-
-/// You can also use the macros with tuple structs or enums.
-/// In this case the meta field will be added as the last field.
-#[stack_error(derive, add_meta)]
-#[error("tuple fail ({_0})")]
-struct TupleStruct(u32);
-
-#[stack_error(derive, add_meta)]
-enum TupleEnum {
-    #[error("io failed")]
-    Io(#[error(source, std_err)] std::io::Error),
-}
-
 ```
+
+The error returned from `process` would look like this in the alternate display format:
+```text
+failed to process input: invalid input: wanted 23 but got 13
+```
+and like this in the debug format with `RUST_BACKTRACE=1` or `RUST_ERROR_LOCATION=1`:
+```text
+failed to process input (examples/basic.rs:61:17)
+Caused by:
+    invalid input (examples/basic.rs:36:5)
+    wanted 23 but got 13 (examples/basic.rs:48:13)
+```
+
+### Details
+
+- All errors using the macro implement the `StackError` trait, which exposes call-site metadata for
+  where the error occurred. Its `source` method returns references which may be other stack errors,
+  allowing access to location data for the entire error chain.
+- The proc macro can add a `meta` field to structs or enum variants. This field stores call-site
+  metadata accessed through the `StackError` trait.
+    * Call-site metadata in the `meta` field is collected only if `RUST_BACKTRACE=1` or
+     `RUST_ERROR_LOCATION=1` env variable is set. Otherwise, it is disabled to avoid runtime overhead.
+    * The declarative macro `e!` provides an ergonomic way to construct such errors without
+      explicitly setting the field. The crate's `ensure` and `bail` macro also do this.
+- The crate includes an `AnyError` type, similar to `anyhow::Error`. When created from a
+  `StackError`, the call-site metadata is preserved. `AnyError` is recommended for applications and
+  tests, while libraries should use concrete derived errors.
+    * All stack errors convert to `AnyError`, so they can be propagated to such results with `?`.
+    * For std errors, use `std_context` or `anyerr` to convert to `AnyError`. For stack errors, use
+      `context` or simply propagate with `?`.
+    * Result extension traits provide conversions between results with `StackError`s,
+      `std::error::Error`s to `AnyError`, with support for attaching context.
+- Both `AnyError` and all errors using the `StackError` derive feature consistent, structured output
+  that includes location metadata when available.
+
+### Feature flags
+
+* `anyhow` (off by default): Enables `From<anyhow::Error> for AnyError` and `From<AnyError> for anyhow::Error`
+
+## License
+
+Copyright 2025 N0, INC.
+
+This project is licensed under either of
+
+ * Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or
+   http://www.apache.org/licenses/LICENSE-2.0)
+ * MIT license ([LICENSE-MIT](LICENSE-MIT) or
+   http://opensource.org/licenses/MIT)
+
+at your option.
+
+## Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this project by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.

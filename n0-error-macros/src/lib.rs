@@ -7,6 +7,49 @@ use syn::{
     Fields, FieldsNamed, Ident,
 };
 
+/// Attribute macro to expand error enums or structs.
+///
+/// This macro can be applied to enums and structs and the syntax `#[stack_error(args)]`,
+/// where `args` is a comma-seperated list of arguments.
+/// * **`add_meta`** adds a `n0_error::Meta` field to the struct or each each enum variant. The `Meta`
+/// struct contains call-site location metadata for the error.
+///   - If the item has named fields, the field will added with name `meta`
+///   - If the item is a tuple, the field will be added as the last field and marked with `#[error(meta)]`
+///   - It the item is a unit, it will be altered to named fields, and the field
+///     will be added with name `meta`
+/// * **`derive`** will add `#[derive(StackError)]`. See the docs for the [`StackError`] for details.
+/// * The item-level options of [`StackError`] derive macro (namely `from_sources` and `std_sources`)
+///   can be set `stack_error` as well. They will be expanded to an `#[error]` attribute on the item.
+///   See the documentation for [`StackError`] for details.
+///
+/// This is an attribute macro because it *modifies* its item by adding the `meta` field,
+/// which derive macros cannot.
+///
+/// ## Example
+///
+/// ```rust
+/// #[stack_error(derive, add_meta, from_sources)]
+/// enum MyError {
+///     #[error("io failed")]
+///     Io { source: std::io::Error },
+///     #[error("remote failed with {_0}")]
+///     RemoteErrorCode(u32),
+/// }
+/// ```
+/// expands to
+/// ```rust
+/// #[derive(n0_error::StackError)]
+/// #[error(from_sources)]
+/// enum MyError {
+///     #[error("io failed")]
+///     Io {
+///         source: std::io::Error,
+///         meta: n0_error::Meta,
+///     },
+///     #[error("remote failed with {_0}")]
+///     RemoteErrorCode(u32, #[error(meta)] n0_error::Meta),
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn stack_error(args: TokenStream, item: TokenStream) -> TokenStream {
     match stack_error_inner(args, parse_macro_input!(item as syn::Item)) {
@@ -86,20 +129,37 @@ fn add_meta_field(fields: &mut Fields) {
     }
 }
 
-/// Derive macro that implements StackError, Display, Debug, std::error::Error,
+/// Derive macro that implements `StackError`, `Display`, `Debug` and `std::error::Error`
 /// and generates `From<T>` impls for fields/variants configured via `#[error(..)]`.
+/// Derive macro for stack errors.
 ///
-/// Recognized attributes:
-/// - on enums:
+/// This derive macro can be applied to structs and enums. Unit, tuple and named-field variants
+/// are supported equally.
+///
+/// The macro will expand to implementations of `StackError`, [`Display`], [`Debug`] and [`Error`].
+/// It will also add [`From`] impls for fields configured via the `error` attribute.
+///
+/// Items with the derive macro applied accept an `#[error(args)]` attribute, where `args` is a comma-separated
+/// list of arguments. The supported arguments vary by on the kind of item:
+///
+/// * on enums:
 ///   - `#[error(from_sources)]`: Creates `From` impls for the `source` types of all variants. Will fail to compile if multiple sources have the same type.
 ///   - `#[error(std_sources)]`: Defaults all sources to be std errors instead of stack errors.
-/// - on enum variants and structs:
+/// * on structs and enum variants:
 ///   - `#[error("format {field}: {}", a + b)]`: Sets the display formatting. You can refer to named fields by their names, and to tuple fields by `_0`, `_1` etc.
 ///   - `#[error(transparent)]`: Directly forwards the display implementation to the error source, and omits the outer error in the source chain when reporting errors.
-/// - on fields:
-///   - `#[error(source)]`: Sets a field as the source of this error. If a field is named `source` this is applied implicitly and not needed.
+/// * on fields:
 ///   - `#[error(from)]`: Creates a `From` impl for the field's type to the error type.
-///   - `#[error(std_err)]`: Marks the error as a `std` error. Without this attribute, errors are expected to implement `StackError`. Only applicable to source fields.
+///   - `#[error(source)]`: The error's `source` method returns a reference to whatever field is named `source`, or
+///     has the `source` attribute set.
+///   - `#[error(std_err)]`: *Only on on `source` fields.* Marks the error as a `std` error.
+///     Source fields not marked as `std_err` need to implement `StackError`.
+///   - `#[error(stack_error)]`: *Only on `source` fields.* Marks the error as a `StackError`. This is the default unless `std_sources` is set on the top-level item.
+///   - `#[error(meta)]: Sets a field as the `meta` field for this error or variant. Must have type [`::n0_error::Error`]
+///
+/// [`Display`]: std::fmt::Display
+/// [`Debug`]: std::fmt::Debug
+/// [`Error`]: std::error::Error.
 #[proc_macro_derive(StackError, attributes(error))]
 pub fn derive_stack_error(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as syn::DeriveInput);
