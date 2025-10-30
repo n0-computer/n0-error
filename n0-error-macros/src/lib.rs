@@ -1,4 +1,3 @@
-use darling::FromAttributes;
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::{quote, ToTokens};
@@ -164,12 +163,12 @@ fn add_meta_field(fields: &mut Fields) {
 pub fn derive_stack_error(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as syn::DeriveInput);
     match derive_error_inner(input) {
-        Err(tokens) => tokens.write_errors().into(),
+        Err(err) => err.to_compile_error().into(),
         Ok(tokens) => tokens.into(),
     }
 }
 
-fn derive_error_inner(input: DeriveInput) -> Result<proc_macro2::TokenStream, darling::Error> {
+fn derive_error_inner(input: DeriveInput) -> Result<proc_macro2::TokenStream, syn::Error> {
     match &input.data {
         syn::Data::Enum(item) => {
             let args = EnumAttrArgs::from_attributes(&input.attrs)?;
@@ -191,8 +190,7 @@ fn derive_error_inner(input: DeriveInput) -> Result<proc_macro2::TokenStream, da
         _ => Err(err(
             &input,
             "#[derive(StackError)] only supports enums or structs",
-        )
-        .into()),
+        )),
     }
 }
 
@@ -222,8 +220,7 @@ enum SourceKind {
     Std,
 }
 
-#[derive(Default, Clone, Copy, darling::FromMeta)]
-#[darling(default, derive_syn_parse)]
+#[derive(Default, Clone, Copy)]
 struct StackErrAttrArgs {
     add_meta: bool,
     derive: bool,
@@ -231,21 +228,79 @@ struct StackErrAttrArgs {
     std_sources: bool,
 }
 
-#[derive(Default, Clone, Copy, FromAttributes)]
-#[darling(default, attributes(error, stackerr))]
+impl syn::parse::Parse for StackErrAttrArgs {
+    fn parse(input: syn::parse::ParseStream<'_>) -> syn::Result<Self> {
+        let mut out = Self::default();
+        while !input.is_empty() {
+            let ident: Ident = input.parse()?;
+            match ident.to_string().as_str() {
+                "add_meta" => out.add_meta = true,
+                "derive" => out.derive = true,
+                "from_sources" => out.from_sources = true,
+                "std_sources" => out.std_sources = true,
+                other => Err(err(
+                    ident,
+                    format!("unknown stack_error option `{}`", other),
+                ))?,
+            }
+            if input.peek(syn::Token![,]) {
+                let _ = input.parse::<syn::Token![,]>()?;
+            }
+        }
+        Ok(out)
+    }
+}
+
+#[derive(Default, Clone, Copy)]
 struct EnumAttrArgs {
     from_sources: bool,
     std_sources: bool,
 }
 
-#[derive(Default, Clone, Copy, FromAttributes)]
-#[darling(default, attributes(error))]
+impl EnumAttrArgs {
+    fn from_attributes(attrs: &[Attribute]) -> Result<Self, syn::Error> {
+        let mut out = Self::default();
+        for ident in parse_error_attr_as_idents(attrs)? {
+            match ident.to_string().as_str() {
+                "from_sources" => out.from_sources = true,
+                "std_sources" => out.std_sources = true,
+                _ => Err(err(
+                    ident,
+                    "Invalid argument for the `error` attribute on fields",
+                ))?,
+            }
+        }
+        Ok(out)
+    }
+}
+
+#[derive(Default, Clone, Copy)]
 struct FieldAttrArgs {
     source: bool,
     from: bool,
     std_err: bool,
     stack_err: bool,
     meta: bool,
+}
+
+impl FieldAttrArgs {
+    fn from_attributes(attrs: &[Attribute]) -> Result<Self, syn::Error> {
+        let mut out = Self::default();
+        for ident in parse_error_attr_as_idents(attrs)? {
+            match ident.to_string().as_str() {
+                "source" => out.source = true,
+                "from" => out.from = true,
+                "std_err" => out.std_err = true,
+                "stack_err" => out.stack_err = true,
+                "meta" => out.meta = true,
+                _ => Err(err(
+                    ident,
+                    "Invalid argument for the `error` attribute on fields",
+                ))?,
+            }
+        }
+        Ok(out)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -888,8 +943,8 @@ impl DisplayArgs {
         }
 
         // #[error("...", args...)]
-        let mut it = args.into_iter();
-        let first = it.next().unwrap();
+        let mut args = args.into_iter();
+        let first = args.next().unwrap();
         let fmt_lit = match first {
             Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(s), .. }) => s,
             other => return Err(err(
@@ -898,7 +953,7 @@ impl DisplayArgs {
             ))
         };
 
-        let rest: Vec<Expr> = it.collect();
+        let rest: Vec<Expr> = args.collect();
         Ok(DisplayArgs::Format(
             quote! { write!(f, #fmt_lit #(, #rest)* ) },
         ))
@@ -907,4 +962,17 @@ impl DisplayArgs {
 
 fn err(ident: impl ToTokens, err: impl ToString) -> syn::Error {
     syn::Error::new_spanned(ident, err.to_string())
+}
+
+fn parse_error_attr_as_idents(attrs: &[Attribute]) -> Result<Vec<Ident>, syn::Error> {
+    let mut out = vec![];
+    for attr in attrs.iter().filter(|a| a.path().is_ident("error")) {
+        let idents = attr.parse_args_with(|input: syn::parse::ParseStream<'_>| {
+            let list: Punctuated<Ident, syn::Token![,]> =
+                Punctuated::<Ident, syn::Token![,]>::parse_terminated(input)?;
+            Ok(list.into_iter())
+        })?;
+        out.extend(idents);
+    }
+    Ok(out)
 }

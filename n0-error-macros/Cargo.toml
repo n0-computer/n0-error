@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "macros for n0-error"
 license = "MIT OR Apache-2.0"
-authors = ["Frando <frando@n0.computer>", "n0 team"]
+authors = ["Frando <franz@n0.computer>", "n0 team"]
 repository = "https://github.com/n0-computer/n0-error"
 keywords = ["error", "location", "ergonomic"]
 
@@ -12,8 +12,7 @@ keywords = ["error", "location", "ergonomic"]
 proc-macro = true
 
 [dependencies]
+heck = "0.5"
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["full", "extra-traits"] }
-heck = "0.5"
-darling = "0.21.3"
