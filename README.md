@@ -1,6 +1,9 @@
 # n0-error
 
-An error library that supports tracking the call-site location of errors.
+[![Documentation](https://docs.rs/n0-error/badge.svg)](https://docs.rs/n0-error)
+[![Crates.io](https://img.shields.io/crates/v/n0-error.svg)](https://crates.io/crates/n0-error)
+
+An Rust error library that supports tracking the call-site location of errors.
 
 This crate provides a `StackError` trait and proc macro to ergonomically work with nested
 enum and struct errors, while allowing to track the call-site location for the
@@ -13,6 +16,7 @@ the location metadata of `StackError` errors accessible through the full error c
 
 ```rust
 use n0_error::{e, ensure, Result, StackResultExt, stack_error};
+
 /// The `stack_error` macro controls how to turn our enum into a `StackError`.
 ///
 /// * `add_meta` adds a field to all variants to track the call-site error location
