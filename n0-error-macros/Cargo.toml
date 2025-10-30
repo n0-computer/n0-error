@@ -16,4 +16,3 @@ proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["full", "extra-traits"] }
 heck = "0.5"
-darling = "0.21.3"
