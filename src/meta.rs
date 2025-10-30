@@ -53,7 +53,8 @@ impl Meta {
     pub fn new() -> Self {
         Self::default()
     }
-    /// Returns the captured location.
+
+    /// Returns the captured call-site location.
     pub fn location(&self) -> Option<&Location> {
         self.location.as_ref()
     }
