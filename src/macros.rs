@@ -34,9 +34,9 @@ pub use spez as __spez;
 ///
 /// - `anyerr!("msg")` creates an error with just a message.
 /// - `anyerr!("this failed at {a} with {}", b)` creates an error with a formatted message
-/// - `anyerr!(value)` converts any `impl StackError`, `impl std::error::Error`, or `impl Display` into [`AnyError`].
-/// - `anyerr!(value, "context string") works as above, but adds "context string" as [`context`](Anyerr::context).
-/// - `anyerr!(value, "context {}", foo) works as above, but with a formatted string as context
+/// - `anyerr!(value)` converts any [`impl StackError`], `impl std::error::Error`, or `impl Display` into [`AnyError`].
+/// - `anyerr!(value, "context")` works as above and then adds context via [`AnyError::context`].
+/// - `anyerr!(value, "context {}", foo)` works as above, but with a formatted string as context
 ///
 /// The forms that take `value` use *autoref specialization* to keep the most details possible:
 /// if given a [`StackError`] it uses [`AnyError::from_stack`], if given a std error, uses [`AnyError::from_std`],
@@ -48,6 +48,7 @@ pub use spez as __spez;
 /// [`AnyError::from_std`]: crate::AnyError::from_std
 /// [`AnyError`]: crate::AnyError
 /// [`StackError`]: crate::StackError
+/// [`impl StackError`]: crate::StackError
 #[macro_export]
 macro_rules! anyerr {
     ($fmt:literal$(, $($arg:expr),* $(,)?)?) => {
