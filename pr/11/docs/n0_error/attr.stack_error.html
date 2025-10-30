@@ -32,7 +32,10 @@ which derive macros cannot.</p>
 #[error(from_sources)]
 </span><span class="kw">enum </span>MyError {
     <span class="attr">#[error(<span class="string">"io failed"</span>)]
-    </span>Io { source: std::io::Error, meta: n0_error::Meta },
+    </span>Io {
+        source: std::io::Error,
+        meta: n0_error::Meta,
+    },
     <span class="attr">#[error(<span class="string">"remote failed with {_0}"</span>)]
     </span>RemoteErrorCode(u32, <span class="attr">#[error(meta)] </span>n0_error::Meta),
 }</code></pre></div>
