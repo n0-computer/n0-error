@@ -359,7 +359,7 @@ impl_stack_error_for_std_error!(std::array::TryFromSliceError);
 
 impl<T: StackError + std::error::Error + Sized + 'static> StackError for Arc<T> {
     fn as_std(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
-        (&**self).as_std()
+        (**self).as_std()
     }
 
     fn into_std(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync> {
@@ -367,11 +367,11 @@ impl<T: StackError + std::error::Error + Sized + 'static> StackError for Arc<T> 
     }
 
     fn as_dyn(&self) -> &dyn StackError {
-        (&**self).as_dyn()
+        (**self).as_dyn()
     }
 
     fn meta(&self) -> Option<&Meta> {
-        (&**self).meta()
+        (**self).meta()
     }
 
     fn source(&self) -> Option<ErrorRef<'_>> {
@@ -379,10 +379,10 @@ impl<T: StackError + std::error::Error + Sized + 'static> StackError for Arc<T> 
     }
 
     fn fmt_message(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        (&**self).fmt_message(f)
+        (**self).fmt_message(f)
     }
 
     fn is_transparent(&self) -> bool {
-        (&**self).is_transparent()
+        (**self).is_transparent()
     }
 }
