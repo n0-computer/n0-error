@@ -71,7 +71,7 @@ Caused by:
 </ul>
 <h4 id="feature-flags"><a class="doc-anchor" href="#feature-flags">§</a>Feature flags</h4>
 <ul>
-<li><code>anyhow</code> (off by default): Enables <code>From&lt;anyhow::Error&gt; for AnyError</code></li>
+<li><code>anyhow</code> (off by default): Enables <code>From&lt;anyhow::Error&gt; for AnyError</code> and <code>impl StackError for anyhow::Error</code></li>
 </ul>
 <h3 id="example"><a class="doc-anchor" href="#example">§</a>Example</h3>
 <div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>n0_error::{<span class="prelude-ty">Result</span>, StackResultExt, StdResultExt, e, stack_error};
