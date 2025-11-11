@@ -540,7 +540,7 @@ fn test_anyhow_compat2() -> Result {
     }
     ok().map_err(AnyError::from_anyhow)?;
     let _err = AnyError::from(anyhow::anyhow!("fail"));
-    let _res = ok().context("ctx")?;
+    ok().context("ctx")?;
     ok()?;
     Ok(())
 }
