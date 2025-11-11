@@ -353,3 +353,34 @@ impl_stack_error_for_std_error!(std::str::Utf8Error);
 impl_stack_error_for_std_error!(std::string::FromUtf8Error);
 impl_stack_error_for_std_error!(std::net::AddrParseError);
 impl_stack_error_for_std_error!(std::array::TryFromSliceError);
+
+#[cfg(feature = "anyhow")]
+impl StackError for anyhow::Error {
+    fn as_std(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
+        std::convert::AsRef::as_ref(self)
+    }
+
+    fn into_std(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync> {
+        self.into_boxed_dyn_error()
+    }
+
+    fn as_dyn(&self) -> &dyn StackError {
+        self
+    }
+
+    fn meta(&self) -> Option<&Meta> {
+        None
+    }
+
+    fn source(&self) -> Option<ErrorRef<'_>> {
+        anyhow::Error::chain(self).next().map(ErrorRef::std)
+    }
+
+    fn fmt_message(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+
+    fn is_transparent(&self) -> bool {
+        false
+    }
+}

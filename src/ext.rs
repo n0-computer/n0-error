@@ -156,30 +156,6 @@ impl<T> StackResultExt<T, NoneError> for Option<T> {
     }
 }
 
-#[cfg(feature = "anyhow")]
-impl<T> StackResultExt<T, anyhow::Error> for Result<T, anyhow::Error> {
-    fn context(self, context: impl fmt::Display) -> Result<T, AnyError> {
-        match self {
-            Ok(v) => Ok(v),
-            Err(e) => Err(AnyError::from_anyhow(e).context(context)),
-        }
-    }
-
-    fn with_context<F, C>(self, context: F) -> Result<T, AnyError>
-    where
-        F: FnOnce(&anyhow::Error) -> C,
-        C: fmt::Display,
-    {
-        match self {
-            Ok(v) => Ok(v),
-            Err(e) => {
-                let context = context(&e);
-                Err(AnyError::from_anyhow(e).context(context))
-            }
-        }
-    }
-}
-
 /// Error returned when converting [`Option`]s to an error.
 #[stack_error(derive, add_meta)]
 #[error("Expected some, found none")]

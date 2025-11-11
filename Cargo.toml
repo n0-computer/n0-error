@@ -23,5 +23,5 @@ inherits = 'dev'
 opt-level = 1
 
 [features]
-default = []
+default = ["anyhow"]
 anyhow = ["dep:anyhow"]

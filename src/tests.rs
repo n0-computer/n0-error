@@ -13,7 +13,11 @@ fn test_anyhow_compat() -> Result {
     fn ok() -> anyhow::Result<()> {
         Ok(())
     }
-    ok().map_err(AnyError::from_anyhow)
+    ok().map_err(AnyError::from_anyhow)?;
+    let _err = AnyError::from(anyhow::anyhow!("fail"));
+    let _res = ok().context("ctx")?;
+    ok()?;
+    Ok(())
 }
 
 #[stack_error(add_meta)]
