@@ -1,9 +1,20 @@
 use std::{fmt, sync::OnceLock};
 
 /// Wrapper around `std::panic::Location` used for display in reports.
-#[derive(derive_more::Debug, derive_more::Display, Clone, Copy)]
-#[debug("{_0:?}")]
+#[derive(Clone, Copy)]
 pub struct Location(&'static std::panic::Location<'static>);
+
+impl fmt::Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self.0, f)
+    }
+}
+
+impl fmt::Debug for Location {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self.0, f)
+    }
+}
 
 /// Captured metadata for an error creation site.
 ///
