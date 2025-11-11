@@ -13,11 +13,7 @@ fn test_anyhow_compat() -> Result {
     fn ok() -> anyhow::Result<()> {
         Ok(())
     }
-    ok().map_err(AnyError::from_anyhow)?;
-    let _err = AnyError::from(anyhow::anyhow!("fail"));
-    let _res = ok().context("ctx")?;
-    ok()?;
-    Ok(())
+    ok().map_err(AnyError::from_anyhow)
 }
 
 #[stack_error(add_meta)]
@@ -534,4 +530,17 @@ fn downcast() {
     let err = e!(MyError::A).context("foo");
     let err_ref: &MyError = err.source().unwrap().downcast_ref().unwrap();
     assert!(matches!(err_ref, MyError::A { .. }));
+}
+
+#[test]
+#[cfg(feature = "anyhow")]
+fn test_anyhow_compat2() -> Result {
+    fn ok() -> anyhow::Result<()> {
+        Ok(())
+    }
+    ok().map_err(AnyError::from_anyhow)?;
+    let _err = AnyError::from(anyhow::anyhow!("fail"));
+    let _res = ok().context("ctx")?;
+    ok()?;
+    Ok(())
 }
