@@ -100,7 +100,7 @@ Caused by:
 
 ### Feature flags
 
-* `anyhow` (off by default): Enables `From<anyhow::Error> for AnyError`
+* `anyhow` (off by default): Enables `From<anyhow::Error> for AnyError` and `impl StackError for anyhow::Error`
 
 ## License
 

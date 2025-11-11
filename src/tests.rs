@@ -531,3 +531,16 @@ fn downcast() {
     let err_ref: &MyError = err.source().unwrap().downcast_ref().unwrap();
     assert!(matches!(err_ref, MyError::A { .. }));
 }
+
+#[test]
+#[cfg(feature = "anyhow")]
+fn test_anyhow_compat2() -> Result {
+    fn ok() -> anyhow::Result<()> {
+        Ok(())
+    }
+    ok().map_err(AnyError::from_anyhow)?;
+    let _err = AnyError::from(anyhow::anyhow!("fail"));
+    ok().context("ctx")?;
+    ok()?;
+    Ok(())
+}
