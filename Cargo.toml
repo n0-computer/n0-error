@@ -1,6 +1,6 @@
 [package]
 name = "n0-error"
-version = "0.1.1"
+version = "0.1.0"
 edition = "2024"
 readme = "README.md"
 description = "ergonomic errors with call-site location"
