@@ -1,0 +1,196 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="A library for ergonomic errors with call-site location data"><title>n0_error - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-dbdb5eec.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="n0_error" data-themes="" data-resource-suffix="" data-rustdoc-version="1.85.0-nightly (d10a6823f 2024-11-29)" data-channel="nightly" data-search-js="search-92e6798f.js" data-settings-js="settings-0f613d39.js" ><script src="../static.files/storage-59e33391.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-5f194d8c.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../n0_error/index.html">n0_<wbr>error</a><span class="version">0.1.1</span></h2></div><div class="sidebar-elems"><ul class="block"><li><a id="all-types" href="all.html">All Items</a></li></ul><section id="rustdoc-toc"><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#feature-flags" title="Feature flags">Feature flags</a></li><li><a href="#example" title="Example">Example</a></li></ul><h3><a href="#macros">Crate Items</a></h3><ul class="block"><li><a href="#macros" title="Macros">Macros</a></li><li><a href="#structs" title="Structs">Structs</a></li><li><a href="#enums" title="Enums">Enums</a></li><li><a href="#traits" title="Traits">Traits</a></li><li><a href="#functions" title="Functions">Functions</a></li><li><a href="#types" title="Type Aliases">Type Aliases</a></li><li><a href="#attributes" title="Attribute Macros">Attribute Macros</a></li><li><a href="#derives" title="Derive Macros">Derive Macros</a></li></ul></section><div id="rustdoc-modnav"></div></div></nav><div class="sidebar-resizer"></div><main><div class="width-limiter"><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1>Crate <span>n0_error</span><button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/n0_error/lib.rs.html#1-106">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>A library for ergonomic errors with call-site location data</p>
+<p>This crate provides a <a href="trait.StackError.html" title="trait n0_error::StackError"><code>StackError</code></a> trait and <a href="attr.stack_error.html" title="attr n0_error::stack_error"><code>stack_error</code></a> proc macro to
+ergonomically work with enum or struct errors.</p>
+<ul>
+<li>
+<p>All errors that use the macro will implement the <a href="trait.StackError.html" title="trait n0_error::StackError"><code>StackError</code></a> trait,
+which exposes call-site metadata indicating where the error occurred. Its
+<a href="trait.StackError.html#tymethod.source" title="method n0_error::StackError::source"><code>source</code></a> method returns an <a href="enum.ErrorRef.html" title="enum n0_error::ErrorRef"><code>ErrorRef</code></a>, which is an
+enum over either a reference to a <a href="https://doc.rust-lang.org/nightly/core/error/trait.Error.html" title="trait core::error::Error"><code>std::error::Error</code></a> or another
+<a href="trait.StackError.html" title="trait n0_error::StackError"><code>StackError</code></a>. This allows retrieving error locations for the full error
+chain, as long as all errors are stack errors.</p>
+</li>
+<li>
+<p>The proc macro can add a <code>meta</code> field to structs or enum variants. This
+field is the source for the call-site location accessed through the
+<code>StackError</code> trait. There is a simple declarative macro <a href="macro.e.html" title="macro n0_error::e"><code>e!</code></a> that
+provides an ergonomic way to construct errors with a <code>meta</code> field without
+having to spell it out everywhere.</p>
+</li>
+<li>
+<p>This crate also provides an <a href="struct.AnyError.html" title="struct n0_error::AnyError"><code>AnyError</code></a> type, which is similar to
+<a href="https://docs.rs/anyhow/latest/anyhow/"><code>anyhow</code></a>. If constructed from an
+error that implements <code>StackError</code>, the call-site location is preserved.
+The <code>AnyError</code> type is generally recommended for applications or tests,
+whereas libraries should use concrete errors with the macro.</p>
+</li>
+<li>
+<p>There are result extensions to convert <code>StackError</code>s or <code>std::error::Error</code>s
+to <code>AnyError</code> while providing additional context.</p>
+</li>
+<li>
+<p>While all errors using the derive macro from this crate have a <code>From</code>
+implementation for <code>AnyError</code>, regular std errors do not. Unfortunately, a
+blanket <code>From</code> implementation for all std errors would prevent a
+specialized implementation for stack errors, causing loss of location
+metadata upon conversion to <code>AnyError</code>. Therefore, you need to use the
+<a href="trait.StdResultExt.html#tymethod.std_context" title="method n0_error::StdResultExt::std_context"><code>std_context</code></a> or
+<a href="trait.StdResultExt.html#tymethod.anyerr" title="method n0_error::StdResultExt::anyerr"><code>anyerr</code></a> methods to convert results with std errors
+to <a href="struct.AnyError.html" title="struct n0_error::AnyError"><code>AnyError</code></a>. You should not use these methods on stack errors; instead,
+use <a href="trait.StackResultExt.html#tymethod.context" title="method n0_error::StackResultExt::context"><code>context</code></a> or simply forward with <code>?</code>.</p>
+</li>
+</ul>
+<p>The call-site metadata in the <code>meta</code> field is collected only if the
+environment variable <code>RUST_BACKTRACE=1</code> or <code>RUST_ERROR_LOCATION=1</code> is set.
+Otherwise, it is not collected, as doing so has a small performance overhead.</p>
+<p>Both <a href="struct.AnyError.html" title="struct n0_error::AnyError"><code>AnyError</code></a> and all errors that use the
+<a href="derive.StackError.html" title="derive n0_error::StackError">derive macro</a> feature the following outputs:</p>
+<ul>
+<li>
+<p>Display impl (<code>{error}</code>) prints only the message of the outermost error
+<code>failed to process input</code></p>
+</li>
+<li>
+<p>Alternate display impl (<code>{error:#}</code>) prints the message for each error in the chain, in a single line
+<code>failed to process input: invalid input: wanted 23 but got 13</code></p>
+</li>
+<li>
+<p>Debug impl (<code>{error:?}</code>) prints the message and each source, on separate lines.</p>
+<div class="example-wrap"><pre class="language-text"><code>failed to process input
+Caused by:
+    invalid input
+    wanted 23 but got 13</code></pre></div>
+<p>If <code>RUST_BACKTRACE</code> or <code>RUST_ERROR_LOCATION</code> is set, this will also print the call site of each error.</p>
+<div class="example-wrap"><pre class="language-text"><code>failed to process input (examples/basic.rs:61:17)
+Caused by:
+     invalid input (examples/basic.rs:36:5)
+     wanted 23 but got 13 (examples/basic.rs:48:13)</code></pre></div></li>
+<li>
+<p>Alternate debug impl  <code>{error:#?}</code>: An output similar to how the <code>#[derive(Debug)]</code> output looks.</p>
+</li>
+</ul>
+<h4 id="feature-flags"><a class="doc-anchor" href="#feature-flags">§</a>Feature flags</h4>
+<ul>
+<li><code>anyhow</code> (off by default): Enables <code>From&lt;anyhow::Error&gt; for AnyError</code> and <code>impl StackError for anyhow::Error</code></li>
+</ul>
+<h3 id="example"><a class="doc-anchor" href="#example">§</a>Example</h3>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>n0_error::{<span class="prelude-ty">Result</span>, StackResultExt, StdResultExt, e, stack_error};
+
+<span class="doccomment">/// The `stack_error` macro controls how to turn our enum into a `StackError`.
+///
+/// * `add_meta` adds a field to all variants to track the call-site error location
+/// * `derive` adds `#[derive(StackError)]`
+/// * `from_sources` creates `From` impls for the error sources
+</span><span class="attr">#[stack_error(derive, add_meta, from_sources)]
+</span><span class="kw">enum </span>MyError {
+    <span class="doccomment">/// We can define the error message with the `error` attribute
+    /// It should not include the error source, those are printed in addition depending on the output format.
+    </span><span class="attr">#[error(<span class="string">"invalid input"</span>)]
+    </span>InvalidInput { source: InvalidInput },
+    <span class="doccomment">/// Or we can define a variant as `transparent`, which forwards the Display impl to the error source
+    </span><span class="attr">#[error(transparent)]
+    </span>Io {
+        <span class="doccomment">/// For sources that do not implement `StackError`, we have to mark the source as `std_err`.
+        </span><span class="attr">#[error(std_err)]
+        </span>source: std::io::Error,
+    },
+}
+
+<span class="doccomment">/// We can use the [`stack_error`] macro on structs as well.
+</span><span class="attr">#[stack_error(derive, add_meta)]
+#[error(<span class="string">"wanted {expected} but got {actual}"</span>)]
+</span><span class="kw">struct </span>InvalidInput {
+    expected: u32,
+    actual: u32,
+}
+
+<span class="kw">fn </span>validate_input(number: u32) -&gt; <span class="prelude-ty">Result</span>&lt;(), InvalidInput&gt; {
+    <span class="kw">if </span>number != <span class="number">23 </span>{
+        <span class="comment">// The `e` macro constructs a `StackError` while automatically adding the `meta` field.
+        </span><span class="prelude-val">Err</span>(<span class="macro">e!</span>(InvalidInput {
+            actual: number,
+            expected: <span class="number">23
+        </span>}))
+    } <span class="kw">else </span>{
+        <span class="prelude-val">Ok</span>(())
+    }
+}
+
+<span class="kw">fn </span>fail_io() -&gt; std::io::Result&lt;()&gt; {
+    <span class="prelude-val">Err</span>(std::io::Error::other(<span class="string">"io failed"</span>))
+}
+
+<span class="doccomment">/// Some function that returns [`MyError`].
+</span><span class="kw">fn </span>process(number: u32) -&gt; <span class="prelude-ty">Result</span>&lt;(), MyError&gt; {
+    <span class="comment">// We have a `From` impl for `InvalidInput` on our error.
+    </span>validate_input(number)<span class="question-mark">?</span>;
+    <span class="comment">// We have a `From` impl for `std::io::Error` on our error.
+    </span>fail_io()<span class="question-mark">?</span>;
+    <span class="comment">// Without the From impl, we'd need to forward the error manually.
+    // The `e` macro can assist here, so that we don't have to declare the `meta` field manually.
+    </span>fail_io().map_err(|source| <span class="macro">e!</span>(MyError::Io, source))<span class="question-mark">?</span>;
+    <span class="prelude-val">Ok</span>(())
+}
+
+<span class="comment">// A main function that returns AnyError (via the crate's Result alias)
+</span><span class="kw">fn </span>run(number: u32) -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
+    <span class="comment">// We can add context to errors via the result extensions.
+    // The `context` function adds context to any `StackError`.
+    </span>process(number).context(<span class="string">"failed to process input"</span>)<span class="question-mark">?</span>;
+    <span class="comment">// To add context to std errors, we have to use `std_context` from `StdResultExt`.
+    </span>fail_io().std_context(<span class="string">"failed at fail_io"</span>)<span class="question-mark">?</span>;
+    <span class="prelude-val">Ok</span>(())
+}
+
+<span class="kw">fn </span>main() -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
+    <span class="kw">if let </span><span class="prelude-val">Err</span>(err) = run(<span class="number">13</span>) {
+        <span class="macro">println!</span>(<span class="string">"{err}"</span>);
+        <span class="comment">// failed to process input
+
+        </span><span class="macro">println!</span>(<span class="string">"{err:#}"</span>);
+        <span class="comment">// failed to process input: invalid input: wanted 23 but got 13
+
+        </span><span class="macro">println!</span>(<span class="string">"{err:?}"</span>);
+        <span class="comment">// failed to process input
+        // Caused by:
+        //     invalid input
+        //     wanted 23 but got 13
+
+        // and with RUST_BACKTRACE=1 or RUST_ERROR_LOCATION=1
+        // failed to process input (examples/basic.rs:61:17)
+        // Caused by:
+        //     invalid input (examples/basic.rs:36:5)
+        //     wanted 23 but got 13 (examples/basic.rs:48:13)
+
+        </span><span class="macro">println!</span>(<span class="string">"{err:#?}"</span>);
+        <span class="comment">// Stack(WithSource {
+        //     message: "failed to process input",
+        //     source: Stack(InvalidInput {
+        //         source: BadNumber {
+        //             expected: 23,
+        //             actual: 13,
+        //             meta: Meta(examples/basic.rs:48:13),
+        //         },
+        //         meta: Meta(examples/basic.rs:36:5),
+        //     }),
+        //     meta: Meta(examples/basic.rs:61:17),
+        // })
+    </span>}
+    <span class="prelude-val">Ok</span>(())
+}
+
+<span class="doccomment">/// You can also use the macros with tuple structs or enums.
+/// In this case the meta field will be added as the last field.
+</span><span class="attr">#[stack_error(derive, add_meta)]
+#[error(<span class="string">"tuple fail ({_0})"</span>)]
+</span><span class="kw">struct </span>TupleStruct(u32);
+
+<span class="attr">#[stack_error(derive, add_meta)]
+#[allow(unused)]
+</span><span class="kw">enum </span>TupleEnum {
+    <span class="attr">#[error(<span class="string">"io failed"</span>)]
+    </span>Io(<span class="attr">#[error(source, std_err)] </span>std::io::Error),
+}</code></pre></div>
+</div></details><h2 id="macros" class="section-header">Macros<a href="#macros" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="macro" href="macro.anyerr.html" title="macro n0_error::anyerr">anyerr</a></div><div class="desc docblock-short">Converts a value into <a href="struct.AnyError.html" title="struct n0_error::AnyError"><code>AnyError</code></a>.</div></li><li><div class="item-name"><a class="macro" href="macro.bail.html" title="macro n0_error::bail">bail</a></div><div class="desc docblock-short">Returns an error result by constructing a <code>StackError</code> with <a href="macro.e.html" title="macro n0_error::e"><code>e</code></a>.</div></li><li><div class="item-name"><a class="macro" href="macro.bail_any.html" title="macro n0_error::bail_any">bail_<wbr>any</a></div><div class="desc docblock-short">Returns an error result by constructing an <a href="struct.AnyError.html" title="struct n0_error::AnyError"><code>AnyError</code></a> with <a href="macro.anyerr.html" title="macro n0_error::anyerr"><code>anyerr</code></a>.</div></li><li><div class="item-name"><a class="macro" href="macro.e.html" title="macro n0_error::e">e</a></div><div class="desc docblock-short">Constructs an error enum/struct value while automatically filling <code>meta: Meta</code>.</div></li><li><div class="item-name"><a class="macro" href="macro.ensure.html" title="macro n0_error::ensure">ensure</a></div><div class="desc docblock-short">Ensures a condition, otherwise returns the error constructed with <a href="macro.e.html" title="macro n0_error::e"><code>e</code></a> from the remaining args.</div></li><li><div class="item-name"><a class="macro" href="macro.ensure_any.html" title="macro n0_error::ensure_any">ensure_<wbr>any</a></div><div class="desc docblock-short">Ensures a condition, otherwise returns an <a href="struct.AnyError.html" title="struct n0_error::AnyError"><code>AnyError</code></a>.</div></li><li><div class="item-name"><a class="macro" href="macro.try_or.html" title="macro n0_error::try_or">try_or</a></div><div class="desc docblock-short">Unwraps a result, returning in the error case while converting the error.</div></li><li><div class="item-name"><a class="macro" href="macro.try_or_any.html" title="macro n0_error::try_or_any">try_<wbr>or_<wbr>any</a></div><div class="desc docblock-short">Unwraps a result, returning in the error case while adding context to the error.</div></li></ul><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="struct" href="struct.AnyError.html" title="struct n0_error::AnyError">AnyError</a></div><div class="desc docblock-short">Type-erased error that can wrap a <a href="trait.StackError.html" title="trait n0_error::StackError"><code>StackError</code></a> or any <a href="https://doc.rust-lang.org/nightly/core/error/trait.Error.html" title="trait core::error::Error"><code>std::error::Error</code></a>.</div></li><li><div class="item-name"><a class="struct" href="struct.Chain.html" title="struct n0_error::Chain">Chain</a></div><div class="desc docblock-short">Iterator over the sources of an error.</div></li><li><div class="item-name"><a class="struct" href="struct.Location.html" title="struct n0_error::Location">Location</a></div><div class="desc docblock-short">Wrapper around <code>std::panic::Location</code> used for display in reports.</div></li><li><div class="item-name"><a class="struct" href="struct.Meta.html" title="struct n0_error::Meta">Meta</a></div><div class="desc docblock-short">Captured metadata for an error creation site.</div></li><li><div class="item-name"><a class="struct" href="struct.NoneError.html" title="struct n0_error::NoneError">None<wbr>Error</a></div><div class="desc docblock-short">Error returned when converting <a href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option"><code>Option</code></a>s to an error.</div></li><li><div class="item-name"><a class="struct" href="struct.Report.html" title="struct n0_error::Report">Report</a></div><div class="desc docblock-short">A <a href="struct.Report.html" title="struct n0_error::Report"><code>Report</code></a> customizes how an error is displayed.</div></li></ul><h2 id="enums" class="section-header">Enums<a href="#enums" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="enum" href="enum.ErrorRef.html" title="enum n0_error::ErrorRef">Error<wbr>Ref</a></div><div class="desc docblock-short">Reference to an error which can either be a std error or a stack error.</div></li><li><div class="item-name"><a class="enum" href="enum.SourceFormat.html" title="enum n0_error::SourceFormat">Source<wbr>Format</a></div><div class="desc docblock-short">Output style for rendering error sources in a <a href="struct.Report.html" title="struct n0_error::Report"><code>Report</code></a>.</div></li></ul><h2 id="traits" class="section-header">Traits<a href="#traits" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="trait" href="trait.StackError.html" title="trait n0_error::StackError">Stack<wbr>Error</a></div><div class="desc docblock-short">Trait implemented by errors produced by this crate.</div></li><li><div class="item-name"><a class="trait" href="trait.StackErrorExt.html" title="trait n0_error::StackErrorExt">Stack<wbr>Error<wbr>Ext</a></div><div class="desc docblock-short">Extension methods for <a href="trait.StackError.html" title="trait n0_error::StackError"><code>StackError</code></a>s that are <a href="https://doc.rust-lang.org/nightly/core/marker/trait.Sized.html" title="trait core::marker::Sized"><code>Sized</code></a>.</div></li><li><div class="item-name"><a class="trait" href="trait.StackResultExt.html" title="trait n0_error::StackResultExt">Stack<wbr>Result<wbr>Ext</a></div><div class="desc docblock-short">Provides extension methods to add context to <a href="trait.StackError.html" title="trait n0_error::StackError"><code>StackError</code></a>s.</div></li><li><div class="item-name"><a class="trait" href="trait.StdResultExt.html" title="trait n0_error::StdResultExt">StdResult<wbr>Ext</a></div><div class="desc docblock-short">Provides extension methods to add context to std errors.</div></li></ul><h2 id="functions" class="section-header">Functions<a href="#functions" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="fn" href="fn.Ok.html" title="fn n0_error::Ok">Ok</a></div><div class="desc docblock-short">Returns a result with the error type set to <a href="struct.AnyError.html" title="struct n0_error::AnyError"><code>AnyError</code></a>.</div></li><li><div class="item-name"><a class="fn" href="fn.meta.html" title="fn n0_error::meta">meta</a></div><div class="desc docblock-short">Creates new <a href="struct.Meta.html" title="struct n0_error::Meta"><code>Meta</code></a> capturing the caller location.</div></li></ul><h2 id="types" class="section-header">Type Aliases<a href="#types" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="type" href="type.Result.html" title="type n0_error::Result">Result</a></div><div class="desc docblock-short"><code>Result</code> type alias where the error type defaults to <a href="struct.AnyError.html" title="struct n0_error::AnyError"><code>AnyError</code></a>.</div></li></ul><h2 id="attributes" class="section-header">Attribute Macros<a href="#attributes" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="attr" href="attr.stack_error.html" title="attr n0_error::stack_error">stack_<wbr>error</a></div><div class="desc docblock-short">Attribute macro to expand error enums or structs.</div></li></ul><h2 id="derives" class="section-header">Derive Macros<a href="#derives" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="derive" href="derive.StackError.html" title="derive n0_error::StackError">Stack<wbr>Error</a></div><div class="desc docblock-short">Derive macro that implements <code>StackError</code>, <code>Display</code>, <code>Debug</code> and <code>std::error::Error</code>
+and generates <code>From&lt;T&gt;</code> impls for fields/variants configured via <code>#[error(..)]</code>.
+Derive macro for stack errors.</div></li></ul></section></div></main></body></html>
