@@ -26,7 +26,7 @@ use syn::{
 ///
 /// ## Example
 ///
-/// ```rust
+/// ```ignore
 /// #[stack_error(derive, add_meta, from_sources)]
 /// enum MyError {
 ///     #[error("io failed")]
@@ -36,7 +36,7 @@ use syn::{
 /// }
 /// ```
 /// expands to
-/// ```rust
+/// ```ignore
 /// #[derive(n0_error::StackError)]
 /// #[error(from_sources)]
 /// enum MyError {
