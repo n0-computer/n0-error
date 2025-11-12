@@ -24,3 +24,6 @@ opt-level = 1
 [features]
 default = ["anyhow"]
 anyhow = ["dep:anyhow"]
+
+[workspace]
+members = ["n0-error-macros"]
