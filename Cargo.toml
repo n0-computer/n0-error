@@ -22,7 +22,7 @@ inherits = 'dev'
 opt-level = 1
 
 [features]
-default = ["anyhow"]
+default = []
 anyhow = ["dep:anyhow"]
 
 [workspace]
