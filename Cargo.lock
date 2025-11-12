@@ -10,7 +10,7 @@ checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
 
 [[package]]
 name = "n0-error"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "n0-error-macros",
@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "n0-error-macros"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "proc-macro2",
  "quote",
