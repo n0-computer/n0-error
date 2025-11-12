@@ -19,7 +19,7 @@ See the documentation for <a href="derive.StackError.html" title="derive n0_erro
 <p>This is an attribute macro because it <em>modifies</em> its item by adding the <code>meta</code> field,
 which derive macros cannot.</p>
 <h3 id="example"><a class="doc-anchor" href="#example">§</a>Example</h3>
-<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="attr">#[stack_error(derive, add_meta, from_sources)]
+<div class="example-wrap ignore"><a href="#" class="tooltip" title="This example is not tested">ⓘ</a><pre class="rust rust-example-rendered"><code><span class="attr">#[stack_error(derive, add_meta, from_sources)]
 </span><span class="kw">enum </span>MyError {
     <span class="attr">#[error(<span class="string">"io failed"</span>)]
     </span>Io { source: std::io::Error },
@@ -28,7 +28,7 @@ which derive macros cannot.</p>
 }</code></pre></div>
 <p>expands to</p>
 
-<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="attr">#[derive(n0_error::StackError)]
+<div class="example-wrap ignore"><a href="#" class="tooltip" title="This example is not tested">ⓘ</a><pre class="rust rust-example-rendered"><code><span class="attr">#[derive(n0_error::StackError)]
 #[error(from_sources)]
 </span><span class="kw">enum </span>MyError {
     <span class="attr">#[error(<span class="string">"io failed"</span>)]
