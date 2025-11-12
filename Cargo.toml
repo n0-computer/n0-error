@@ -1,6 +1,6 @@
 [package]
 name = "n0-error"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 readme = "README.md"
 description = "ergonomic errors with call-site location"
@@ -11,7 +11,7 @@ keywords = ["error", "location", "ergonomic"]
 
 [dependencies]
 anyhow = { version = "1.0.100", optional = true }
-n0-error-macros = { path = "n0-error-macros", version = "0.1.1" }
+n0-error-macros = { path = "n0-error-macros", version = "0.1.2" }
 spez = "0.1.2"
 
 [dev-dependencies]

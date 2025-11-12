@@ -1,6 +1,15 @@
 # Changelog
 
+## [0.1.2](https://github.com/n0-computer/n0-error/compare/v0.1.1..0.1.2) - 2025-11-12
+
+### 🐛 Bug Fixes
+
+- Remove anyhow from default features again ([#19](https://github.com/n0-computer/n0-error/issues/19)) - ([7c36206](https://github.co
+m/n0-computer/n0-error/commit/7c362066fd902b228cc104c1a8be987f5a23b8e4))
+
 ## [0.1.1](https://github.com/n0-computer/n0-error/compare/v0.1.0..0.1.1) - 2025-11-12
+
+*This release was yanked because it inadvertently added the anyhow feature to the default features.*
 
 ### ⛰️  Features
 
