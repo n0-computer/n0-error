@@ -11,7 +11,7 @@ use syn::{
 /// This macro can be applied to enums and structs and the syntax `#[stack_error(args)]`,
 /// where `args` is a comma-seperated list of arguments.
 /// * **`add_meta`** adds a `n0_error::Meta` field to the struct or each each enum variant. The `Meta`
-/// struct contains call-site location metadata for the error.
+///   struct contains call-site location metadata for the error.
 ///   - If the item has named fields, the field will added with name `meta`
 ///   - If the item is a tuple, the field will be added as the last field and marked with `#[error(meta)]`
 ///   - It the item is a unit, it will be altered to named fields, and the field
@@ -26,7 +26,7 @@ use syn::{
 ///
 /// ## Example
 ///
-/// ```rust
+/// ```ignore
 /// #[stack_error(derive, add_meta, from_sources)]
 /// enum MyError {
 ///     #[error("io failed")]
@@ -36,7 +36,7 @@ use syn::{
 /// }
 /// ```
 /// expands to
-/// ```rust
+/// ```ignore
 /// #[derive(n0_error::StackError)]
 /// #[error(from_sources)]
 /// enum MyError {
@@ -318,15 +318,15 @@ impl<'a> VariantIdent<'a> {
     }
     fn item_ident(&self) -> &Ident {
         match self {
-            VariantIdent::Struct(ident) => &ident,
-            VariantIdent::Variant(ident, _) => &ident,
+            VariantIdent::Struct(ident) => ident,
+            VariantIdent::Variant(ident, _) => ident,
         }
     }
 
     fn inner(&self) -> &Ident {
         match self {
-            VariantIdent::Struct(ident) => &ident,
-            VariantIdent::Variant(_, ident) => &ident,
+            VariantIdent::Struct(ident) => ident,
+            VariantIdent::Variant(_, ident) => ident,
         }
     }
 }
@@ -357,7 +357,7 @@ impl<'a> VariantInfo<'a> {
         attrs: &[Attribute],
         args: &EnumAttrArgs,
     ) -> Result<VariantInfo<'a>, syn::Error> {
-        let display = DisplayArgs::parse(&attrs)?;
+        let display = DisplayArgs::parse(attrs)?;
         let (kind, fields): (Kind, Vec<FieldInfo>) = match fields {
             Fields::Named(ref fields) => (
                 Kind::Named,
@@ -419,10 +419,10 @@ impl<'a> VariantInfo<'a> {
         let from_field = fields
             .iter()
             .find(|f| f.args.from)
-            .or_else(|| args.from_sources.then(|| source_field).flatten());
+            .or_else(|| args.from_sources.then_some(source_field).flatten());
         let meta_field = fields.iter().find(|f| f.is_meta()).cloned();
         Ok(VariantInfo {
-            ident: ident.clone(),
+            ident,
             kind,
             display,
             from: from_field.cloned(),
@@ -464,7 +464,7 @@ impl<'a> VariantInfo<'a> {
             Kind::Unit => quote! { #slf },
             Kind::Named => quote! { #slf { .. } },
             Kind::Tuple => {
-                let pats = std::iter::repeat(quote! { _ }).take(self.fields.len());
+                let pats = std::iter::repeat_n(quote! { _ }, self.fields.len());
                 quote! { #slf ( #(#pats),* ) }
             }
         }
@@ -487,7 +487,7 @@ impl<'a> VariantInfo<'a> {
         }
     }
 
-    fn from_impl(&self) -> Option<(&syn::Type, proc_macro2::TokenStream)> {
+    fn generate_from_impl(&self) -> Option<(&syn::Type, proc_macro2::TokenStream)> {
         self.from.as_ref().map(|from_field| {
             let ty = &from_field.field.ty;
             let fields = self.fields.iter().map(|field| {
@@ -657,7 +657,7 @@ fn generate_enum_impls(
 
     // From impls for variant fields marked with #[from]
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let from_impls = variants.iter().filter_map(|vi| vi.from_impl()).map(|(ty, construct)| {
+    let from_impls = variants.iter().filter_map(|vi| vi.generate_from_impl()).map(|(ty, construct)| {
         quote! {
             impl #impl_generics ::core::convert::From<#ty> for #enum_ident #ty_generics #where_clause {
                 #[track_caller]
@@ -821,7 +821,7 @@ fn generate_struct_impl(
                 }
             }
             Kind::Tuple => {
-                let binds = (0..info.fields.len()).map(|i| syn::Index::from(i));
+                let binds = (0..info.fields.len()).map(syn::Index::from);
                 quote! {
                     let mut dbg = f.debug_tuple(#item_name);
                     #( dbg.field(&self.#binds); )*;
@@ -833,7 +833,7 @@ fn generate_struct_impl(
 
     // From impls for fields marked with #[error(from)] (or inferred via from_sources)
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let from_impl = info.from_impl().map(|(ty, construct)| {
+    let from_impl = info.generate_from_impl().map(|(ty, construct)| {
         quote! {
             impl #impl_generics ::core::convert::From<#ty> for #item_ident #ty_generics #where_clause {
                 #[track_caller]
