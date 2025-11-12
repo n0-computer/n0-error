@@ -11,7 +11,7 @@ use syn::{
 /// This macro can be applied to enums and structs and the syntax `#[stack_error(args)]`,
 /// where `args` is a comma-seperated list of arguments.
 /// * **`add_meta`** adds a `n0_error::Meta` field to the struct or each each enum variant. The `Meta`
-/// struct contains call-site location metadata for the error.
+///   struct contains call-site location metadata for the error.
 ///   - If the item has named fields, the field will added with name `meta`
 ///   - If the item is a tuple, the field will be added as the last field and marked with `#[error(meta)]`
 ///   - It the item is a unit, it will be altered to named fields, and the field
@@ -487,7 +487,7 @@ impl<'a> VariantInfo<'a> {
         }
     }
 
-    fn from_impl(&self) -> Option<(&syn::Type, proc_macro2::TokenStream)> {
+    fn generate_from_impl(&self) -> Option<(&syn::Type, proc_macro2::TokenStream)> {
         self.from.as_ref().map(|from_field| {
             let ty = &from_field.field.ty;
             let fields = self.fields.iter().map(|field| {
@@ -657,7 +657,7 @@ fn generate_enum_impls(
 
     // From impls for variant fields marked with #[from]
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let from_impls = variants.iter().filter_map(|vi| vi.from_impl()).map(|(ty, construct)| {
+    let from_impls = variants.iter().filter_map(|vi| vi.generate_from_impl()).map(|(ty, construct)| {
         quote! {
             impl #impl_generics ::core::convert::From<#ty> for #enum_ident #ty_generics #where_clause {
                 #[track_caller]
@@ -833,7 +833,7 @@ fn generate_struct_impl(
 
     // From impls for fields marked with #[error(from)] (or inferred via from_sources)
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let from_impl = info.from_impl().map(|(ty, construct)| {
+    let from_impl = info.generate_from_impl().map(|(ty, construct)| {
         quote! {
             impl #impl_generics ::core::convert::From<#ty> for #item_ident #ty_generics #where_clause {
                 #[track_caller]
