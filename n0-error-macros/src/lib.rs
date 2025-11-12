@@ -318,15 +318,15 @@ impl<'a> VariantIdent<'a> {
     }
     fn item_ident(&self) -> &Ident {
         match self {
-            VariantIdent::Struct(ident) => &ident,
-            VariantIdent::Variant(ident, _) => &ident,
+            VariantIdent::Struct(ident) => ident,
+            VariantIdent::Variant(ident, _) => ident,
         }
     }
 
     fn inner(&self) -> &Ident {
         match self {
-            VariantIdent::Struct(ident) => &ident,
-            VariantIdent::Variant(_, ident) => &ident,
+            VariantIdent::Struct(ident) => ident,
+            VariantIdent::Variant(_, ident) => ident,
         }
     }
 }
@@ -357,7 +357,7 @@ impl<'a> VariantInfo<'a> {
         attrs: &[Attribute],
         args: &EnumAttrArgs,
     ) -> Result<VariantInfo<'a>, syn::Error> {
-        let display = DisplayArgs::parse(&attrs)?;
+        let display = DisplayArgs::parse(attrs)?;
         let (kind, fields): (Kind, Vec<FieldInfo>) = match fields {
             Fields::Named(ref fields) => (
                 Kind::Named,
@@ -419,10 +419,10 @@ impl<'a> VariantInfo<'a> {
         let from_field = fields
             .iter()
             .find(|f| f.args.from)
-            .or_else(|| args.from_sources.then(|| source_field).flatten());
+            .or_else(|| args.from_sources.then_some(source_field).flatten());
         let meta_field = fields.iter().find(|f| f.is_meta()).cloned();
         Ok(VariantInfo {
-            ident: ident.clone(),
+            ident,
             kind,
             display,
             from: from_field.cloned(),
@@ -464,7 +464,7 @@ impl<'a> VariantInfo<'a> {
             Kind::Unit => quote! { #slf },
             Kind::Named => quote! { #slf { .. } },
             Kind::Tuple => {
-                let pats = std::iter::repeat(quote! { _ }).take(self.fields.len());
+                let pats = std::iter::repeat_n(quote! { _ }, self.fields.len());
                 quote! { #slf ( #(#pats),* ) }
             }
         }
@@ -821,7 +821,7 @@ fn generate_struct_impl(
                 }
             }
             Kind::Tuple => {
-                let binds = (0..info.fields.len()).map(|i| syn::Index::from(i));
+                let binds = (0..info.fields.len()).map(syn::Index::from);
                 quote! {
                     let mut dbg = f.debug_tuple(#item_name);
                     #( dbg.field(&self.#binds); )*;
