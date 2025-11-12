@@ -1,0 +1,40 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Derive macro that implements `StackError`, `Display`, `Debug` and `std::error::Error` and generates `From&#60;T&#62;` impls for fields/variants configured via `#[error(..)]`. Derive macro for stack errors."><title>StackError in n0_error_macros - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-dbdb5eec.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="n0_error_macros" data-themes="" data-resource-suffix="" data-rustdoc-version="1.85.0-nightly (d10a6823f 2024-11-29)" data-channel="nightly" data-search-js="search-92e6798f.js" data-settings-js="settings-0f613d39.js" ><script src="../static.files/storage-59e33391.js"></script><script defer src="sidebar-items.js"></script><script defer src="../static.files/main-5f194d8c.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc derive"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../n0_error_macros/index.html">n0_<wbr>error_<wbr>macros</a><span class="version">0.1.1</span></h2></div><div class="sidebar-elems"><div id="rustdoc-modnav"></div></div></nav><div class="sidebar-resizer"></div><main><div class="width-limiter"><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><span class="rustdoc-breadcrumbs"><a href="index.html">n0_error_macros</a></span><h1>Derive Macro <span class="derive">StackError</span><button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/n0_error_macros/lib.rs.html#163-169">Source</a> </span></div><pre class="rust item-decl"><code>#[derive(StackError)]
+{
+    <span class="comment">// Attributes available to this derive:</span>
+    #[error]
+}
+</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Derive macro that implements <code>StackError</code>, <code>Display</code>, <code>Debug</code> and <code>std::error::Error</code>
+and generates <code>From&lt;T&gt;</code> impls for fields/variants configured via <code>#[error(..)]</code>.
+Derive macro for stack errors.</p>
+<p>This derive macro can be applied to structs and enums. Unit, tuple and named-field variants
+are supported equally.</p>
+<p>The macro will expand to implementations of <code>StackError</code>, <a href="https://doc.rust-lang.org/nightly/core/fmt/trait.Display.html" title="trait core::fmt::Display"><code>Display</code></a>, <a href="https://doc.rust-lang.org/nightly/core/fmt/trait.Debug.html" title="trait core::fmt::Debug"><code>Debug</code></a> and <a href="std::error::Error."><code>Error</code></a>.
+It will also add <a href="https://doc.rust-lang.org/nightly/core/convert/trait.From.html" title="trait core::convert::From"><code>From</code></a> impls for fields configured via the <code>error</code> attribute.</p>
+<p>Items with the derive macro applied accept an <code>#[error(args)]</code> attribute, where <code>args</code> is a comma-separated
+list of arguments. The supported arguments vary by on the kind of item:</p>
+<ul>
+<li>on enums:
+<ul>
+<li><code>#[error(from_sources)]</code>: Creates <code>From</code> impls for the <code>source</code> types of all variants. Will fail to compile if multiple sources have the same type.</li>
+<li><code>#[error(std_sources)]</code>: Defaults all sources to be std errors instead of stack errors.</li>
+</ul>
+</li>
+<li>on structs and enum variants:
+<ul>
+<li><code>#[error("format {field}: {}", a + b)]</code>: Sets the display formatting. You can refer to named fields by their names, and to tuple fields by <code>_0</code>, <code>_1</code> etc.</li>
+<li><code>#[error(transparent)]</code>: Directly forwards the display implementation to the error source, and omits the outer error in the source chain when reporting errors.</li>
+</ul>
+</li>
+<li>on fields:
+<ul>
+<li><code>#[error(from)]</code>: Creates a <code>From</code> impl for the field’s type to the error type.</li>
+<li><code>#[error(source)]</code>: The error’s <code>source</code> method returns a reference to whatever field is named <code>source</code>, or
+has the <code>source</code> attribute set.</li>
+<li><code>#[error(std_err)]</code>: <em>Only on on <code>source</code> fields.</em> Marks the error as a <code>std</code> error.
+Source fields not marked as <code>std_err</code> need to implement <code>StackError</code>.</li>
+<li><code>#[error(stack_error)]</code>: <em>Only on <code>source</code> fields.</em> Marks the error as a <code>StackError</code>. This is the default unless <code>std_sources</code> is set on the top-level item.</li>
+<li><code>#[error(meta)]: Sets a field as the </code>meta<code> field for this error or variant. Must have type [</code>::n0_error::Error`]</li>
+</ul>
+</li>
+</ul>
+</div></details></section></div></main></body></html>
