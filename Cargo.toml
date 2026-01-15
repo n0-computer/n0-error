@@ -11,7 +11,7 @@ keywords = ["error", "location", "ergonomic"]
 
 [dependencies]
 anyhow = { version = "1.0.100", optional = true }
-n0-error-macros = { path = "n0-error-macros", version = "0.1.2" }
+n0-error-macros = { path = "n0-error-macros", version = "0.1.3" }
 spez = "0.1.2"
 
 [dev-dependencies]
