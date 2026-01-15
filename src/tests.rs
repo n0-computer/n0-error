@@ -544,3 +544,33 @@ fn test_anyhow_compat2() -> Result {
     ok()?;
     Ok(())
 }
+
+#[test]
+fn test_struct_source() {
+    fn inner() -> Result {
+        #[stack_error(add_meta, derive)]
+        struct NamedFields {
+            source: AnyError,
+            code: u32,
+        }
+        Err(NamedFields::new(anyerr!("foo"), 23))?;
+
+        #[stack_error(add_meta, derive)]
+        struct NamedFieldsStd {
+            #[error(std_err)]
+            source: io::Error,
+            code: u32,
+        }
+        Err(NamedFieldsStd::new(io::Error::other("foo"), 23))?;
+
+        #[stack_error(add_meta, derive)]
+        struct TupleFields(#[error(source)] AnyError, u32);
+        Err(TupleFields::new(anyerr!("foo"), 23))?;
+
+        #[stack_error(add_meta, derive)]
+        struct TupleFieldsStd(#[error(source, std_err)] io::Error, u32);
+        Err(TupleFieldsStd::new(io::Error::other("foo"), 23))?;
+        Ok(())
+    }
+    let _ = inner();
+}
