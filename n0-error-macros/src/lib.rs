@@ -556,10 +556,10 @@ impl<'a> FieldIdent<'a> {
 
     fn self_expr(&self) -> proc_macro2::TokenStream {
         match self {
-            FieldIdent::Named(ident) => quote!(self.#ident),
+            FieldIdent::Named(ident) => quote!(&self.#ident),
             FieldIdent::Unnamed(i) => {
                 let idx = syn::Index::from(*i);
-                quote!(self.#idx)
+                quote!(&self.#idx)
             }
         }
     }
