@@ -10,7 +10,7 @@ repository = "https://github.com/n0-computer/n0-error"
 keywords = ["error", "location", "ergonomic"]
 
 [dependencies]
-anyhow = { version = "1.0.100", optional = true }
+anyhow = { version = "1.0.101", optional = true }
 n0-error-macros = { path = "n0-error-macros", version = "0.1.3" }
 spez = "0.1.2"
 
