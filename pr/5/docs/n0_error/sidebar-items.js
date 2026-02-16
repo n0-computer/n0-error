@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"attr":["add_meta"],"derive":["Error"],"enum":["ErrorRef","SourceFormat"],"fn":["Ok","meta"],"macro":["Err","anyerr","e","ensure","ensure_any","format_err","whatever"],"struct":["AnyError","Chain","Location","Meta","Report"],"trait":["StackError","StackErrorExt","StackResultExt","StdResultExt"],"type":["Result"]};
