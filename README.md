@@ -1,7 +1,12 @@
 # n0-error
 
-[![Documentation](https://docs.rs/n0-error/badge.svg)](https://docs.rs/n0-error)
-[![Crates.io](https://img.shields.io/crates/v/n0-error.svg)](https://crates.io/crates/n0-error)
+[![Documentation](https://img.shields.io/badge/docs-latest-blue.svg?style=flat-square)](https://docs.rs/n0-error/)
+[![Crates.io](https://img.shields.io/crates/v/n0-error.svg?style=flat-square)](https://crates.io/crates/n0-error)
+[![downloads](https://img.shields.io/crates/d/n0-error.svg?style=flat-square)](https://crates.io/crates/n0-error)
+[![Chat](https://img.shields.io/discord/1161119546170687619?logo=discord&style=flat-square)](https://discord.com/invite/DpmJgtU7cW)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE-MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=flat-square)](LICENSE-APACHE)
+[![CI](https://img.shields.io/github/actions/workflow/status/n0-computer/n0-error/ci.yaml?branch=main&style=flat-square&label=CI)](https://github.com/n0-computer/n0-error/actions/workflows/ci.yaml)
 
 An Rust error library that supports tracking the call-site location of errors.
 
@@ -104,7 +109,7 @@ Caused by:
 
 ## License
 
-Copyright 2025 N0, INC.
+Copyright 2026 N0, INC.
 
 This project is licensed under either of
 
