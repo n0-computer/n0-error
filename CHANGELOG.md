@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.0-rc.0](https://github.com/n0-computer/n0-error/compare/v0.1.3..v1.0.0-rc.0) - 2026-05-06
+
+### 🐛 Bug Fixes
+
+- Configure git identity in cleanup workflow ([#38](https://github.com/n0-computer/n0-error/issues/38)) - ([44113ca](https://github.com/n0-computer/n0-error/commit/44113cac595bdeaf30b1c6583ba6690754ea3a4a))
+
+### ⚙️ Miscellaneous Tasks
+
+- Misc updates ([#46](https://github.com/n0-computer/n0-error/issues/46)) - ([79dd4d6](https://github.com/n0-computer/n0-error/commit/79dd4d62ff6741910806d0f7cfd9819e4c40314d))
+
 ## [0.1.3](https://github.com/n0-computer/n0-error/compare/v0.1.2..0.1.3) - 2026-01-15
 
 ### 🐛 Bug Fixes
