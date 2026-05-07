@@ -68,7 +68,7 @@ jobs:
           tool: nextest@0.9.80
 
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Select features
         run: |
