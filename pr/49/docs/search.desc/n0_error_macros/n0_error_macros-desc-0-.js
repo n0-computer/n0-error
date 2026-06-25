@@ -1,0 +1,1 @@
+searchState.loadedDescShard("n0_error_macros", 0, "Derive macro that implements <code>StackError</code>, <code>Display</code>, <code>Debug</code> …\nAttribute macro to expand error enums or structs.")
