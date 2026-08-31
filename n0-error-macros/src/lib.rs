@@ -762,6 +762,7 @@ fn generate_struct_impl(
         let doc = format!("Creates a new [`{}`] error.", item_ident);
         quote! {
             #[doc = #doc]
+            #[allow(unreachable_code)]
             #[track_caller]
             pub fn new(#(#params),*) -> Self { #construct }
         }
@@ -837,6 +838,7 @@ fn generate_struct_impl(
     let from_impl = info.generate_from_impl().map(|(ty, construct)| {
         quote! {
             impl #impl_generics ::core::convert::From<#ty> for #item_ident #ty_generics #where_clause {
+                #[allow(unreachable_code)]
                 #[track_caller]
                 fn from(source: #ty) -> Self { #construct }
             }
