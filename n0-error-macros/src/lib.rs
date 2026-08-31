@@ -660,6 +660,7 @@ fn generate_enum_impls(
     let from_impls = variants.iter().filter_map(|vi| vi.generate_from_impl()).map(|(ty, construct)| {
         quote! {
             impl #impl_generics ::core::convert::From<#ty> for #enum_ident #ty_generics #where_clause {
+                #[allow(unreachable_code)]
                 #[track_caller]
                 fn from(source: #ty) -> Self {
                     #construct

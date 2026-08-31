@@ -8,6 +8,21 @@ use crate::{
 mod util;
 
 #[test]
+fn infallible_from_source() {
+    #[stack_error(derive, add_meta, from_sources)]
+    enum Error {
+        #[error(transparent)]
+        Infallible {
+            #[error(std_err)]
+            source: std::convert::Infallible,
+        },
+    }
+
+    fn assert_from<T: From<std::convert::Infallible>>() {}
+    assert_from::<Error>();
+}
+
+#[test]
 #[cfg(feature = "anyhow")]
 fn test_anyhow_compat() -> Result {
     fn ok() -> anyhow::Result<()> {
@@ -76,7 +91,7 @@ fn test_whatever() {
     assert_eq!(format!("{:#}", fail_my_error().unwrap_err()), "A failure");
     assert_eq!(
         format!("{:?}", fail_my_error().unwrap_err()),
-        format!("A failure (src/tests.rs:34:32)")
+        format!("A failure (src/tests.rs:49:32)")
     );
     //     let expected = r#"A {
     //     location: Some(
@@ -208,10 +223,10 @@ Caused by:
     println!("debug :\n{fmt}\n");
     assert_eq!(
         &fmt,
-        r#"read error (src/tests.rs:195:34)
+        r#"read error (src/tests.rs:210:34)
 Caused by:
-    failed to read foo.txt (src/tests.rs:194:39)
-    file not found (src/tests.rs:194:39)"#
+    failed to read foo.txt (src/tests.rs:209:39)
+    file not found (src/tests.rs:209:39)"#
     );
     let fmt = format!("{err:#?}");
     println!("debug alternate:\n{fmt}\n");
@@ -289,7 +304,7 @@ fn test_structs_location() {
     let res = fail_some_error();
     let err = res.unwrap_err();
     assert_eq!(format!("{err}"), "SomeErrorLoc");
-    assert_eq!(format!("{err:?}"), "SomeErrorLoc (src/tests.rs:282:13)");
+    assert_eq!(format!("{err:?}"), "SomeErrorLoc (src/tests.rs:297:13)");
     let err2 = err.context("bad");
     assert_eq!(format!("{err2:#}"), "bad: SomeErrorLoc");
     let res = fail_some_error_fields();
@@ -300,9 +315,9 @@ fn test_structs_location() {
     println!("{err2:?}");
     assert_eq!(
         format!("{err2:?}"),
-        r#"bad (src/tests.rs:298:20)
+        r#"bad (src/tests.rs:313:20)
 Caused by:
-    fail (22) (src/tests.rs:286:13)"#
+    fail (22) (src/tests.rs:301:13)"#
     );
 }
 
@@ -404,7 +419,7 @@ fn test_tuple_enum_source_and_meta() {
     let err = TupleEnum::from(err);
     assert_eq!(
         format!("{err:?}"),
-        "TupleEnum::Transparent (src/tests.rs:404:15)\nCaused by:\n    A failure (src/tests.rs:403:15)"
+        "TupleEnum::Transparent (src/tests.rs:419:15)\nCaused by:\n    A failure (src/tests.rs:418:15)"
     );
 }
 
