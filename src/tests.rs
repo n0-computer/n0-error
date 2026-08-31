@@ -605,3 +605,17 @@ fn test_struct_source() {
     }
     let _ = inner();
 }
+
+#[test]
+#[deny(deprecated)]
+fn test_deprecated() {
+    #[stack_error(derive, add_meta, allow_deprecated)]
+    enum MyError {
+        Foo {},
+        #[deprecated]
+        Bar {},
+    }
+    let _err = e!(MyError::Foo);
+    #[allow(deprecated)]
+    let _err = e!(MyError::Bar);
+}

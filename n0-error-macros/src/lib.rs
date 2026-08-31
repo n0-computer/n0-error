@@ -17,6 +17,9 @@ use syn::{
 ///   - It the item is a unit, it will be altered to named fields, and the field
 ///     will be added with name `meta`
 /// * **`derive`** will add `#[derive(StackError)]`. See the docs for the [`StackError`] for details.
+/// * **`allow_deprecated`** *(enums only)* suppresses the `deprecated` lint in the generated
+///   impls, so an enum can have `#[deprecated]` variants without the expansion triggering
+///   warnings at the `#[stack_error(..)]` call site.
 /// * The item-level options of [`StackError`] derive macro (namely `from_sources` and `std_sources`)
 ///   can be set `stack_error` as well. They will be expanded to an `#[error]` attribute on the item.
 ///   See the documentation for [`StackError`] for details.
@@ -69,14 +72,14 @@ fn stack_error_inner(
                     add_meta_field(&mut variant.fields);
                 }
             }
-            modify_attrs(&args, &mut item.attrs)?;
+            modify_attrs(&args, &mut item.attrs, true)?;
             Ok(quote! { #item })
         }
         syn::Item::Struct(item) => {
             if args.add_meta {
                 add_meta_field(&mut item.fields);
             }
-            modify_attrs(&args, &mut item.attrs)?;
+            modify_attrs(&args, &mut item.attrs, false)?;
             Ok(quote! { #item })
         }
         _ => Err(err(
@@ -86,7 +89,11 @@ fn stack_error_inner(
     }
 }
 
-fn modify_attrs(args: &StackErrAttrArgs, attrs: &mut Vec<Attribute>) -> Result<(), syn::Error> {
+fn modify_attrs(
+    args: &StackErrAttrArgs,
+    attrs: &mut Vec<Attribute>,
+    is_enum: bool,
+) -> Result<(), syn::Error> {
     attrs.retain(|attr| !attr.path().is_ident("stackerr"));
     if args.derive {
         attrs.insert(0, parse_quote!(#[derive(::n0_error::StackError)]));
@@ -94,6 +101,9 @@ fn modify_attrs(args: &StackErrAttrArgs, attrs: &mut Vec<Attribute>) -> Result<(
     let error_args: Vec<_> = [
         args.from_sources.then(|| quote!(from_sources)),
         args.std_sources.then(|| quote!(std_sources)),
+        // Only enums have deprecated *variants*; a struct's item-level `#[error(..)]` is its
+        // display format, so emitting an options attr there would break display parsing.
+        (args.allow_deprecated && is_enum).then(|| quote!(allow_deprecated)),
     ]
     .into_iter()
     .flatten()
@@ -180,7 +190,12 @@ fn derive_error_inner(input: DeriveInput) -> Result<proc_macro2::TokenStream, sy
                     VariantInfo::parse(ident, &v.fields, &v.attrs, &args)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(generate_enum_impls(&input.ident, &input.generics, infos))
+            Ok(generate_enum_impls(
+                &input.ident,
+                &input.generics,
+                infos,
+                args.allow_deprecated,
+            ))
         }
         syn::Data::Struct(item) => {
             let ident = VariantIdent::Struct(&input.ident);
@@ -226,6 +241,7 @@ struct StackErrAttrArgs {
     derive: bool,
     from_sources: bool,
     std_sources: bool,
+    allow_deprecated: bool,
 }
 
 impl syn::parse::Parse for StackErrAttrArgs {
@@ -238,6 +254,7 @@ impl syn::parse::Parse for StackErrAttrArgs {
                 "derive" => out.derive = true,
                 "from_sources" => out.from_sources = true,
                 "std_sources" => out.std_sources = true,
+                "allow_deprecated" => out.allow_deprecated = true,
                 other => Err(err(
                     ident,
                     format!("unknown stack_error option `{}`", other),
@@ -255,6 +272,7 @@ impl syn::parse::Parse for StackErrAttrArgs {
 struct EnumAttrArgs {
     from_sources: bool,
     std_sources: bool,
+    allow_deprecated: bool,
 }
 
 impl EnumAttrArgs {
@@ -264,6 +282,7 @@ impl EnumAttrArgs {
             match ident.to_string().as_str() {
                 "from_sources" => out.from_sources = true,
                 "std_sources" => out.std_sources = true,
+                "allow_deprecated" => out.allow_deprecated = true,
                 _ => Err(err(
                     ident,
                     "Invalid argument for the `error` attribute on fields",
@@ -576,7 +595,11 @@ fn generate_enum_impls(
     enum_ident: &Ident,
     generics: &syn::Generics,
     variants: Vec<VariantInfo>,
+    allow_deprecated: bool,
 ) -> proc_macro2::TokenStream {
+    // When set, the generated impls match on and construct all variants, including deprecated
+    // ones, which would otherwise trigger the `deprecated` lint at the macro call site.
+    let allow = allow_deprecated.then(|| quote!(#[allow(deprecated)]));
     let match_meta_arms = variants.iter().map(|vi| {
         if let Some(meta_field) = &vi.meta {
             let bind = syn::Ident::new("__meta", Span::call_site());
@@ -659,6 +682,7 @@ fn generate_enum_impls(
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let from_impls = variants.iter().filter_map(|vi| vi.generate_from_impl()).map(|(ty, construct)| {
         quote! {
+            #allow
             impl #impl_generics ::core::convert::From<#ty> for #enum_ident #ty_generics #where_clause {
                 #[allow(unreachable_code)]
                 #[track_caller]
@@ -670,6 +694,7 @@ fn generate_enum_impls(
     });
 
     quote! {
+        #allow
         impl #impl_generics ::n0_error::StackError for #enum_ident #ty_generics #where_clause {
             fn as_std(&self) -> &(dyn ::std::error::Error + ::std::marker::Send + ::std::marker::Sync + 'static) {
                 self
@@ -715,6 +740,7 @@ fn generate_enum_impls(
             }
         }
 
+        #allow
         impl #impl_generics ::std::fmt::Debug for #enum_ident #ty_generics #where_clause {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 if f.alternate() {
@@ -728,6 +754,7 @@ fn generate_enum_impls(
             }
         }
 
+        #allow
         impl #impl_generics ::std::error::Error for #enum_ident #ty_generics #where_clause {
             fn source(&self) -> Option<&(dyn ::std::error::Error + 'static)> {
                 match self {
