@@ -647,10 +647,64 @@ fn test_deprecated() {
         #[deprecated]
         Bar {},
         #[deprecated]
-        Io { source: io::Error },
+        Io {
+            source: io::Error,
+        },
     }
     let _err = e!(MyError::Foo);
     #[allow(deprecated)]
     let _err = e!(MyError::Bar);
     let _err = MyError::from(io::Error::other("foo"));
+}
+
+#[test]
+#[forbid(deprecated)]
+fn test_no_deprecated() {
+    #[stack_error(derive, add_meta, from_sources)]
+    enum MyError {
+        Io { source: io::Error },
+    }
+    let err = MyError::from(io::Error::other("foo"));
+    assert_eq!(err.to_string(), "MyError::Io");
+}
+
+#[test]
+#[deny(deprecated)]
+fn test_deprecated_types() {
+    #[stack_error(derive)]
+    #[deprecated]
+    enum OldEnum {
+        Failure,
+    }
+    #[stack_error(derive)]
+    #[deprecated]
+    struct OldStruct;
+
+    #[allow(deprecated)]
+    let _ = (OldEnum::Failure, OldStruct::new());
+}
+
+#[test]
+#[deny(deprecated)]
+fn test_allow_deprecated() {
+    #[deprecated]
+    fn old_formatter() -> &'static str {
+        "old"
+    }
+
+    #[stack_error(derive)]
+    #[allow(dead_code, deprecated)]
+    enum ItemAllowance {
+        #[error("{}", old_formatter())]
+        Failure,
+    }
+    #[stack_error(derive)]
+    enum VariantAllowance {
+        #[allow(deprecated)]
+        #[error("{}", old_formatter())]
+        Failure,
+    }
+
+    assert_eq!(ItemAllowance::Failure.to_string(), "old");
+    assert_eq!(VariantAllowance::Failure.to_string(), "old");
 }

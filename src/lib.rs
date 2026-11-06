@@ -104,3 +104,8 @@ extern crate self as n0_error;
 #[cfg(doctest)]
 #[doc = include_str!("../README.md")]
 mod readme_doctest {}
+
+/// Check that generated impls preserve deprecation diagnostics in user code.
+#[cfg(doctest)]
+#[doc = include_str!("../tests/deprecated.md")]
+mod deprecated_doctest {}
