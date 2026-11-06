@@ -605,3 +605,35 @@ fn test_struct_source() {
     }
     let _ = inner();
 }
+
+#[test]
+fn test_empty_enum() {
+    #[stack_error(derive, add_meta, from_sources)]
+    enum Empty {}
+
+    // The only variant is configured away, as for an error of a disabled feature.
+    #[stack_error(derive, add_meta, from_sources)]
+    enum CfgEmpty {
+        #[cfg(any())]
+        #[error("never")]
+        Never,
+    }
+
+    #[stack_error(derive, add_meta, from_sources)]
+    enum Outer {
+        #[error("empty")]
+        Empty { source: Empty },
+        #[error("cfg empty")]
+        CfgEmpty { source: CfgEmpty },
+    }
+
+    fn assert_errors<T: StackError + std::error::Error + Into<AnyError>>() {}
+    assert_errors::<Empty>();
+    assert_errors::<CfgEmpty>();
+
+    fn inner(res: Result<(), Empty>) -> Result<(), Outer> {
+        res?;
+        Ok(())
+    }
+    assert!(inner(Ok(())).is_ok());
+}

@@ -577,6 +577,13 @@ fn generate_enum_impls(
     generics: &syn::Generics,
     variants: Vec<VariantInfo>,
 ) -> proc_macro2::TokenStream {
+    // Create an expression to match on that works for both empty and non-empty enums.
+    let this = if variants.is_empty() {
+        quote!(*self)
+    } else {
+        quote!(self)
+    };
+
     let match_meta_arms = variants.iter().map(|vi| {
         if let Some(meta_field) = &vi.meta {
             let bind = syn::Ident::new("__meta", Span::call_site());
@@ -681,22 +688,22 @@ fn generate_enum_impls(
                 self
             }
             fn fmt_message(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                match self {
+                match #this {
                     #( #match_fmt_message_arms, )*
                 }
             }
             fn meta(&self) -> Option<&::n0_error::Meta> {
-                match self {
+                match #this {
                     #( #match_meta_arms, )*
                 }
             }
             fn source(&self) -> Option<::n0_error::ErrorRef<'_>> {
-                match self {
+                match #this {
                     #( #match_source_arms )*
                 }
             }
             fn is_transparent(&self) -> bool {
-                match self {
+                match #this {
                     #( #match_transparent_arms, )*
                 }
             }
@@ -718,7 +725,7 @@ fn generate_enum_impls(
         impl #impl_generics ::std::fmt::Debug for #enum_ident #ty_generics #where_clause {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 if f.alternate() {
-                    match self {
+                    match #this {
                         #(#match_debug_arms)*
                     }
                 } else {
@@ -730,7 +737,7 @@ fn generate_enum_impls(
 
         impl #impl_generics ::std::error::Error for #enum_ident #ty_generics #where_clause {
             fn source(&self) -> Option<&(dyn ::std::error::Error + 'static)> {
-                match self {
+                match #this {
                     #( #match_std_source_arms )*
                 }
             }
