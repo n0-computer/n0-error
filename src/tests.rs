@@ -641,13 +641,16 @@ fn test_empty_enum() {
 #[test]
 #[deny(deprecated)]
 fn test_deprecated() {
-    #[stack_error(derive, add_meta, allow_deprecated)]
+    #[stack_error(derive, add_meta, from_sources)]
     enum MyError {
         Foo {},
         #[deprecated]
         Bar {},
+        #[deprecated]
+        Io { source: io::Error },
     }
     let _err = e!(MyError::Foo);
     #[allow(deprecated)]
     let _err = e!(MyError::Bar);
+    let _err = MyError::from(io::Error::other("foo"));
 }
