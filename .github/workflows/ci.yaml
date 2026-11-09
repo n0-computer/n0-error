@@ -71,6 +71,9 @@ jobs:
       - uses: mozilla-actions/sccache-action@v0.0.11
       - uses: taiki-e/install-action@cargo-make
       - run: cargo make format-check
+      - name: Check Cargo.lock is unchanged
+        # cargo make takes no --locked, assert the lockfile instead.
+        run: git diff --exit-code Cargo.lock
 
   check_docs:
     timeout-minutes: 30
@@ -88,7 +91,7 @@ jobs:
         uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Docs
-        run: cargo doc --workspace --all-features --no-deps --document-private-items
+        run: cargo doc --locked --workspace --all-features --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: --cfg docsrs
 
@@ -109,13 +112,13 @@ jobs:
       # TODO: We have a bunch of platform-dependent code so should
       #    probably run this job on the full platform matrix
       - name: clippy check (all features)
-        run: cargo clippy --workspace --all-features --all-targets --bins --tests --benches
+        run: cargo clippy --locked --workspace --all-features --all-targets --bins --tests --benches
 
       - name: clippy check (no features)
-        run: cargo clippy --workspace --no-default-features --lib --bins --tests
+        run: cargo clippy --locked --workspace --no-default-features --lib --bins --tests
 
       - name: clippy check (default features)
-        run: cargo clippy --workspace --all-targets
+        run: cargo clippy --locked --workspace --all-targets
 
   cargo_deny:
     timeout-minutes: 30
@@ -161,7 +164,7 @@ jobs:
         uses: bytecodealliance/actions/wasm-tools/setup@v1
 
       - name: wasm32 build
-        run: cargo build --target wasm32-unknown-unknown
+        run: cargo build --locked --target wasm32-unknown-unknown
 
       # If the Wasm file contains any 'import "env"' declarations, then
       # some non-Wasm-compatible code made it into the final code.
