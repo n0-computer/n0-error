@@ -156,6 +156,10 @@ fn add_meta_field(fields: &mut Fields) {
 ///   - `#[error(stack_error)]`: *Only on `source` fields.* Marks the error as a `StackError`. This is the default unless `std_sources` is set on the top-level item.
 ///   - `#[error(meta)]: Sets a field as the `meta` field for this error or variant. Must have type [`::n0_error::Error`]
 ///
+/// If the type or an enum variant has `#[deprecated]` or `#[allow(deprecated)]`,
+/// the generated impls allow deprecation warnings. Otherwise the lint is left
+/// unchanged, including in user-provided formatting expressions.
+///
 /// [`Display`]: std::fmt::Display
 /// [`Debug`]: std::fmt::Debug
 /// [`Error`]: std::error::Error.
@@ -169,7 +173,10 @@ pub fn derive_stack_error(input: TokenStream) -> TokenStream {
 }
 
 fn derive_error_inner(input: DeriveInput) -> Result<proc_macro2::TokenStream, syn::Error> {
-    match &input.data {
+    let allow_deprecated = allows_deprecated(&input.attrs)
+        || matches!(&input.data, syn::Data::Enum(item)
+            if item.variants.iter().any(|v| allows_deprecated(&v.attrs)));
+    let impls = match &input.data {
         syn::Data::Enum(item) => {
             let args = EnumAttrArgs::from_attributes(&input.attrs)?;
             let infos = item
@@ -191,7 +198,34 @@ fn derive_error_inner(input: DeriveInput) -> Result<proc_macro2::TokenStream, sy
             &input,
             "#[derive(StackError)] only supports enums or structs",
         )),
+    }?;
+    if allow_deprecated {
+        // Scope the allowance to the generated impls, not the user's item or uses.
+        Ok(quote! {
+            #[allow(deprecated)]
+            const _: () = { #impls };
+        })
+    } else {
+        Ok(impls)
     }
+}
+
+/// Follow Serde: propagate deprecation and explicit allowances on the input.
+fn allows_deprecated(attrs: &[Attribute]) -> bool {
+    attrs.iter().any(|attr| {
+        if attr.path().is_ident("deprecated") {
+            return true;
+        }
+        if !attr.path().is_ident("allow") {
+            return false;
+        }
+        let mut found = false;
+        let _ = attr.parse_nested_meta(|meta| {
+            found |= meta.path.is_ident("deprecated");
+            Ok(())
+        });
+        found
+    })
 }
 
 struct SourceField<'a> {
@@ -662,14 +696,10 @@ fn generate_enum_impls(
         }
     });
 
-    // The impls below match on and construct every variant, so they allow `deprecated` to keep
-    // deprecated variants from warning at the call site, like thiserror does.
-
     // From impls for variant fields marked with #[from]
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let from_impls = variants.iter().filter_map(|vi| vi.generate_from_impl()).map(|(ty, construct)| {
         quote! {
-            #[allow(deprecated)]
             impl #impl_generics ::core::convert::From<#ty> for #enum_ident #ty_generics #where_clause {
                 #[allow(unreachable_code)]
                 #[track_caller]
@@ -681,7 +711,6 @@ fn generate_enum_impls(
     });
 
     quote! {
-        #[allow(deprecated)]
         impl #impl_generics ::n0_error::StackError for #enum_ident #ty_generics #where_clause {
             fn as_std(&self) -> &(dyn ::std::error::Error + ::std::marker::Send + ::std::marker::Sync + 'static) {
                 self
@@ -727,7 +756,6 @@ fn generate_enum_impls(
             }
         }
 
-        #[allow(deprecated)]
         impl #impl_generics ::std::fmt::Debug for #enum_ident #ty_generics #where_clause {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 if f.alternate() {
@@ -741,7 +769,6 @@ fn generate_enum_impls(
             }
         }
 
-        #[allow(deprecated)]
         impl #impl_generics ::std::error::Error for #enum_ident #ty_generics #where_clause {
             fn source(&self) -> Option<&(dyn ::std::error::Error + 'static)> {
                 match #this {
