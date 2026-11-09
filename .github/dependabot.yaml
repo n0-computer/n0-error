@@ -9,6 +9,10 @@ updates:
       github-actions:
         patterns:
           - "*"  # Group all Actions updates into a single larger pull request
+    # Let a compromised publish be noticed before we propose it. Applies to
+    # version updates only -- security updates ignore the cooldown.
+    cooldown:
+      default-days: 7
     schedule:
       interval: weekly
       day: "thursday"
@@ -16,15 +20,13 @@ updates:
       timezone: "America/New_York"
   - package-ecosystem: cargo
     directory: /
+    cooldown:
+      default-days: 7
     schedule:
       interval: weekly
       day: "thursday"
       time: "08:00"
       timezone: "America/New_York"
-  - package-ecosystem: docker
-    directory: docker
-    schedule:
-      interval: weekly
-      day: "thursday"
-      time: "08:00"
-      timezone: "America/New_York"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-patch"]
