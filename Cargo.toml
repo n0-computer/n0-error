@@ -27,3 +27,4 @@ anyhow = ["dep:anyhow"]
 
 [workspace]
 members = ["n0-error-macros"]
+default-members = [".", "n0-error-macros"]
