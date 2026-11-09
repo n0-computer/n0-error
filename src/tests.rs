@@ -107,7 +107,7 @@ fn test_whatever() {
     assert_eq!(format!("{:#}", fail_my_error().unwrap_err()), "A failure");
     assert_eq!(
         format!("{:?}", fail_my_error().unwrap_err()),
-        format!("A failure (src/tests.rs:65:32)")
+        "A failure (src/tests.rs:65:32)".to_string()
     );
     //     let expected = r#"A {
     //     location: Some(
