@@ -25,6 +25,10 @@ env:
   SCCACHE_CACHE_SIZE: "50G"
   CRATES_LIST: "n0-error"
 
+# Default to read-only, jobs that need more grant it explicitly.
+permissions:
+  contents: read
+
 jobs:
   build_and_test_nix:
     timeout-minutes: 30
@@ -55,6 +59,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ inputs.git-ref }}
 
       - name: Install ${{ matrix.rust }} rust
@@ -71,8 +76,10 @@ jobs:
         uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
       - name: Select features
+        env:
+          MATRIX_FEATURES: ${{ matrix.features }}
         run: |
-          case "${{ matrix.features }}" in
+          case "$MATRIX_FEATURES" in
               all)
                   echo "FEATURES=--all-features" >> "$GITHUB_ENV"
                   ;;
@@ -105,19 +112,22 @@ jobs:
 
       - name: build tests
         run: |
-          cargo nextest run --locked --workspace ${{ env.FEATURES }} --lib --bins --tests --no-run
+          cargo nextest run --locked --workspace $FEATURES --lib --bins --tests --no-run
 
       - name: list ignored tests
         run: |
-          cargo nextest list --locked --workspace ${{ env.FEATURES }} --lib --bins --tests --run-ignored ignored-only
+          cargo nextest list --locked --workspace $FEATURES --lib --bins --tests --run-ignored ignored-only
 
       - name: run tests
         run: |
           mkdir -p output
-          cargo nextest run --locked --workspace ${{ env.FEATURES }} --lib --bins --tests --profile ci --run-ignored ${{ inputs.flaky && 'all' || 'default' }} --no-fail-fast --message-format ${{ inputs.flaky && 'libtest-json' || 'human' }} > output/${{ matrix.name }}_${{ matrix.features }}_${{ matrix.rust }}.json
+          cargo nextest run --locked --workspace $FEATURES --lib --bins --tests --profile ci --run-ignored "$RUN_IGNORED" --no-fail-fast --message-format "$MSG_FORMAT" > "output/$OUT_NAME.json"
         env:
           RUST_LOG: ${{ runner.debug && 'TRACE' || 'DEBUG'}}
           NEXTEST_EXPERIMENTAL_LIBTEST_JSON: 1
+          RUN_IGNORED: ${{ inputs.flaky && 'all' || 'default' }}
+          MSG_FORMAT: ${{ inputs.flaky && 'libtest-json' || 'human' }}
+          OUT_NAME: ${{ matrix.name }}_${{ matrix.features }}_${{ matrix.rust }}
 
       - name: upload results
         if: ${{ failure() && inputs.flaky }}
@@ -130,10 +140,7 @@ jobs:
 
       - name: doctests
         if: ${{ (! inputs.flaky) &&  matrix.features == 'all' }}
+        env:
+          RUST_LOG: ${{ runner.debug && 'TRACE' || 'DEBUG'}}
         run: |
-          if [ -n "${{ runner.debug }}" ]; then
-              export RUST_LOG=TRACE
-          else
-              export RUST_LOG=DEBUG
-          fi
           cargo test --locked --workspace --all-features --doc

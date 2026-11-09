@@ -15,9 +15,15 @@ concurrency:
 env:
   IROH_FORCE_STAGING_RELAYS: "1"
 
+# Default to read-only, jobs that need more grant it explicitly.
+permissions:
+  contents: read
+
 jobs:
   preview_docs:
-    permissions: write-all
+    permissions:
+      contents: write        # actions-gh-pages pushes the preview branch
+      pull-requests: write   # find-comment / create-or-update-comment
     timeout-minutes: 30
     name: Docs preview
     if: ${{ (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' ) && !github.event.pull_request.head.repo.fork }}
@@ -30,6 +36,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
           toolchain: nightly-2024-11-30
@@ -59,7 +67,7 @@ jobs:
 
       - name: Get current timestamp
         id: get_timestamp
-        run: echo "TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
+        run: echo "TIMESTAMP=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
 
       - name: Create or Update Docs Comment
         uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5.0.0
