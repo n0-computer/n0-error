@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"attr":["stack_error"],"derive":["StackError"],"enum":["ErrorRef","SourceFormat"],"fn":["Ok","meta"],"macro":["anyerr","bail","bail_any","e","ensure","ensure_any","try_or","try_or_any"],"struct":["AnyError","Chain","Location","Meta","NoneError","Report"],"trait":["StackError","StackErrorExt","StackResultExt","StdResultExt"],"type":["Result"]};
